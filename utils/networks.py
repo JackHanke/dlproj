@@ -71,7 +71,7 @@ class ResidualBlock(nn.Module):
     Residual Block as used in AlphaZero.
     """
     def __init__(self, channels: int):
-        super(ResidualBlock, self).__init__()
+        super().__init__()
         self.conv1 = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
         self.bn1 = nn.BatchNorm2d(channels)
         self.conv2 = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
