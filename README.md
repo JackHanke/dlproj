@@ -3,6 +3,20 @@
 
 *dem0* is a chess engine trained *tabula rasa* using the  [AlphaGo Zero](https://www.nature.com/articles/nature24270) self-play pipeline. dem0 trains on the [PettingZoo chess environment](https://pettingzoo.farama.org/environments/classic/chess/). dem0 is evaluated using [ELO rating](https://en.wikipedia.org/wiki/Elo_rating_system) computed by the  [BayesELO](https://www.remi-coulom.fr/Bayesian-Elo/) software. 
 
+## Project TODOs
+- Pipeline
+    1. Self-play
+        - Everything
+    2. Evaluator
+        - Everything
+    3. 
+        - Everything
+- Presentation
+    - Make presentation
+- For Fun
+    - Make pixelart of dem0 sitting on dead competitors
+    - Make animated gif of dem0 moving its head
+    - Make dem0 with traffic cone on its head
 
 ## Network Architecture
 
