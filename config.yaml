@@ -1,0 +1,40 @@
+training:
+  learning_rate: 
+    initial: 0.2
+  batch_size: 2048
+  momentum: 0.9
+  weight_decay: 1e-4
+  loss_weights:
+    policy_loss: 1.0
+    value_loss: 1.0
+  training_steps: 700000
+  num_self_play_games: 4900000
+  optimizer: "SGD"
+  data_buffer_size: 500000
+  checkpoint_interval: 1000
+  evaluation_games: 400
+  evaluation_threshold: 0.55
+
+network:
+  num_residual_blocks: 20
+  num_filters: 256
+
+self_play:
+  num_simulations: 800
+  exploration_noise:
+    epsilon: 0.25
+    alpha: 0.03
+  temperature:
+    initial_moves: 30
+  resign_threshold: -0.9
+  disable_resignation_fraction: 0.1
+
+mcts:
+  cpuct: 1.0
+  dirichlet_alpha: 0.03
+  dirichlet_weight: 0.25
+  num_threads: 8
+
+evaluation:
+  tournament_games: 100
+  time_per_move: 5  # seconds
