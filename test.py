@@ -18,6 +18,7 @@ while not termination and not truncation:
     observation, reward, termination, truncation, info = env.last()
     print(f'Time to get environment information: {time.time()-start} s')
 
+
     if termination or truncation:
         action = None
     else:
@@ -26,6 +27,8 @@ while not termination and not truncation:
         state_tensor = torch.tensor(observation['observation'].copy()).float().permute(2, 0, 1)
         state_tensor = state_tensor.unsqueeze(0)
         print(f'Time to format state tensor for network: {time.time()-start} s')
+
+        print(env.board)
 
         # compute policy and value
         start = time.time()
