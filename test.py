@@ -2,6 +2,7 @@ from pettingzoo.classic import chess_v6
 from utils.networks import DemoNet
 import torch
 import time
+from utils.mcts import mcts
 
 # NOTE this file tests interaction with the PettingZoo Chess environment
 
@@ -35,6 +36,15 @@ while not termination and not truncation:
         policy, value = net.forward(state_tensor)
         print(f'Time to compute policy: {time.time()-start} s')
         print(f"Policy Shape: {policy.shape}, Value Shape: {value.shape}")
+
+
+        sims = 1
+        start = time.time()
+        # NOTE state is the python-chess board obj env.board, not the observation obj
+        # input(env.board)
+        mcts(state=env.board, net=net, tau=1, sims=sims)
+        print(f'MCTS with {sims} sims completes after {time.time()-start} s')
+
 
         # NOTE filter policy vector to legal moves
         start = time.time()
