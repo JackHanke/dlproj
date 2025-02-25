@@ -41,7 +41,7 @@ def combined_loss(
     value_weight: float = 1.0, 
 ) -> torch.Tensor:
     """
-    Computes the total loss for AlphaZero training, combining policy loss, value loss, and L2 regularization.
+    Computes the total loss for AlphaZero training, combining policy loss, and value loss.
 
     Args:
         pi (torch.Tensor): Target policy from MCTS (probability distribution over actions).
