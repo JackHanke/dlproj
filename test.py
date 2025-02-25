@@ -5,8 +5,8 @@ import time
 
 # NOTE this file tests interaction with the PettingZoo Chess environment
 
-env = chess_v6.env(render_mode="human") # for debugging and human interaction NOTE
-# env = chess_v6.env(render_mode=None) # don't render the env NOTE
+# env = chess_v6.env(render_mode="human") # for debugging and human interaction NOTE
+env = chess_v6.env(render_mode=None) # don't render the env NOTE
 env.reset(seed=42)
 
 net = DemoNet(num_res_blocks=1)
@@ -34,7 +34,7 @@ while not termination and not truncation:
         start = time.time()
         policy, value = net.forward(state_tensor)
         print(f'Time to compute policy: {time.time()-start} s')
-        # print(f"Policy Shape: {policy.shape}, Value Shape: {value.shape}")
+        print(f"Policy Shape: {policy.shape}, Value Shape: {value.shape}")
 
         # NOTE filter policy vector to legal moves
         start = time.time()

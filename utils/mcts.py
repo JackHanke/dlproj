@@ -12,18 +12,20 @@ class Node:
         self.q = 0
         self.p = 0
 
-def backup(node):
+def backup(node, v=0):
     node.n += 1
     node.w += v
     node.q = node.w/node.n
     if node.parent is None: return
     # TODO virtual loss?
-    return backup(node=node.parent)
+    return backup(node=node.parent, v=v)
 
 def expand(node):
     # if game ends
     if node.state.is_insufficient_material() or node.state.can_claim_draw():
-        return backup(node=node)
+        # TODO find out how to get 1, -1 from node.state
+        v = node.state
+        return backup(node=node, v=v)
 
     else:
         c_puct = 1
@@ -54,8 +56,8 @@ def expand(node):
             node.children.append(new_node)
             expand(node=new_node)
     
-
-def mcts(state, net, tau, sims=1):
+# TODO
+def mcts(state, net, tau, sims=1, return_history=False):
     # state is a python-chess board    
     root = Node(
         state = state
