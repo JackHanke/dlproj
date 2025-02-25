@@ -20,44 +20,48 @@ def backup(node, v=0):
     # TODO virtual loss?
     return backup(node=node.parent, v=v)
 
-def expand(node):
+def expand(node, net):
     # if game ends
     if node.state.is_insufficient_material() or node.state.can_claim_draw():
-        # TODO find out how to get 1, -1 from node.state
-        v = node.state
+        result_string = node.state.outcome()
+        if result_string == '1-0': v = 1
+        elif result_string == '0-1': v = -1
+        elif result_string == '1/2-1/2': v = 0
+
         return backup(node=node, v=v)
 
     else:
         c_puct = 1
         
-        q_vec = numpy.array([child.q for child in node.children])
-        n_vec = numpy.array([child.n for child in node.children])
+        q_vec = np.array([child.q for child in node.children])
+        n_vec = np.array([child.n for child in node.children])
 
         probs = net.forward(node.state)
+        # 
         p_vec = filter_legal_moves(probs)
 
         u_vec = c_puct*np.sqrt(sum(n_vec))*np.divide(p_vec, 1+n_vec)
 
         move = np.argmax(q_vec + u_vec)
 
+        # TODO handle move output
+
         new_state = node.state.copy()
         new_state.push(move)
 
         # if visited state already
-        if new_state in [child.state in ]:
+        if new_state in [child.state for child in node.children]:
             expand(node=child)
 
         else:
-            #         
-            new_node = Node(
-                state = new_state,
-                p = 0
-            )
+            #
+            p = net(new_state)
+            new_node = Node(state = new_state)
             node.children.append(new_node)
-            expand(node=new_node)
+            return expand(node=new_node)
     
 # TODO
-def mcts(state, net, tau, sims=1, return_history=False):
+def mcts(state, net, tau, sims=1):
     # state is a python-chess board    
     root = Node(
         state = state
@@ -65,7 +69,7 @@ def mcts(state, net, tau, sims=1, return_history=False):
 
     for sim in range(sims):
         # TODO figure out how to parallelize
-        expand(node=root)
+        expand(node=root, net=net)
 
     if tau == 0:
         # TODO argmax? 1/tau something something
@@ -78,4 +82,9 @@ def mcts(state, net, tau, sims=1, return_history=False):
 
     # TODO resign criterion
 
-    return action, value
+    # TODO return 
+
+    return action, value, 
+
+
+
