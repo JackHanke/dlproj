@@ -38,18 +38,14 @@ while not termination and not truncation:
         print(f'Time to compute policy: {time.time()-start} s')
         print(f"Policy Shape: {policy.shape}, Value Shape: {value.shape}")
 
-
-        sims = 1
+        sims = 2
         start = time.time()
         # NOTE state is the python-chess board obj env.board, not the observation obj
         mcts(state=deepcopy(env.board), net=net, tau=1, sims=sims)
         print(f'MCTS with {sims} sims completes after {time.time()-start} s')
 
-
-
         # NOTE filter policy vector to legal moves
         start = time.time()
-        
         action = get_net_best_legal(policy_vec=policy, legal_moves=observation['action_mask'])
         print(f'Time to get action: {time.time()-start} s')
 
