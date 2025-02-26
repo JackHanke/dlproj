@@ -1,12 +1,15 @@
-import utils.chess_utils_local
 import numpy as np
+from copy import deepcopy
+from utils.chess_utils_local import get_observation
+from utils.utils import prepare_state_for_net
 
+# TODO make good comments
 class Node:
     def __init__(self, state, p = 0):
         self.parent = None
         self.action_from_parent = None
         self.state = state
-        self.children = None
+        self.children = []
         self.n = 0
         self.w = 0
         self.q = 0
@@ -17,7 +20,7 @@ def backup(node, v=0):
     node.w += v
     node.q = node.w/node.n
     if node.parent is None: return
-    # TODO virtual loss?
+    # TODO what is virtual loss?
     return backup(node=node.parent, v=v)
 
 def expand(node, net):
@@ -36,7 +39,10 @@ def expand(node, net):
         q_vec = np.array([child.q for child in node.children])
         n_vec = np.array([child.n for child in node.children])
 
-        probs = net.forward(node.state)
+        state_tensor = get_observation(orig_board=node.state, player=)
+        state_tensor = prepare_state_for_net(state_tensor)
+
+        probs = net.forward(state_tensor)
         # 
         p_vec = filter_legal_moves(probs)
 
@@ -46,12 +52,12 @@ def expand(node, net):
 
         # TODO handle move output
 
-        new_state = node.state.copy()
+        new_state = deepcopy(node.state)
         new_state.push(move)
 
         # if visited state already
         if new_state in [child.state for child in node.children]:
-            expand(node=child)
+            return expand(node=child)
 
         else:
             #
