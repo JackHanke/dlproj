@@ -3,6 +3,8 @@ from utils.networks import DemoNet
 import torch
 import time
 from utils.mcts import mcts
+from utils.utils import prepare_state_for_net, get_net_best_legal
+from copy import deepcopy
 
 # NOTE this file tests interaction with the PettingZoo Chess environment
 
@@ -25,8 +27,7 @@ while not termination and not truncation:
     else:
         # format obervation for network
         start = time.time()
-        state_tensor = torch.tensor(observation['observation'].copy()).float().permute(2, 0, 1)
-        state_tensor = state_tensor.unsqueeze(0)
+        state_tensor = prepare_state_for_net(state=observation['observation'].copy())
         print(f'Time to format state tensor for network: {time.time()-start} s')
 
         print(env.board)
@@ -41,21 +42,14 @@ while not termination and not truncation:
         sims = 1
         start = time.time()
         # NOTE state is the python-chess board obj env.board, not the observation obj
-        # input(env.board)
-        mcts(state=env.board, net=net, tau=1, sims=sims)
+        mcts(state=deepcopy(env.board), net=net, tau=1, sims=sims)
         print(f'MCTS with {sims} sims completes after {time.time()-start} s')
 
 
         # NOTE filter policy vector to legal moves
         start = time.time()
-        policy = torch.squeeze(policy)
-        # get legal move indices
-        legal_moves = torch.tensor(observation['action_mask'])
-        legal_indices = torch.nonzero(legal_moves)
-        # get maximum value 
-        max_val = torch.max(policy[legal_indices])
-        # get action that has that maximum value among legal moves
-        action = (policy == max_val).nonzero(as_tuple=True)[0].item()
+        
+        action = get_net_best_legal(policy=policy, legal_moves=observation['action_mask'])
         print(f'Time to get action: {time.time()-start} s')
 
     # take action
