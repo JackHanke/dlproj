@@ -87,7 +87,8 @@ def self_play(
             # Check for game termination
             if env.terminations[current_player]:
                 game_result = env.rewards[current_player]  
-                winning_player = player_to_int[current_player]
+                last_player = player_to_int[current_player]
+                winning_player = game_result * last_player # Sanity check p*r=wp: (1*1=1, 1*-1=-1, -1*1=-1, -1*-1=1)
                 break
         else:
             game_result = 0  # Draw by reaching max moves
