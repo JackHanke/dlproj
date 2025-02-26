@@ -1,7 +1,25 @@
 import torch
 import numpy as np
+from pettingzoo.classic import chess_v6
 
-# NOTE this file is a series of generally usefull transformations
+# NOTE this file is a series of generally useful transformations
+
+def get_action_mask_from_state(state: np.ndarray, player: any) -> np.ndarray:
+    """
+    Returns the action mask for that player given a state and player.
+
+    Returns:
+        action_mask (np.ndarray): A binary array where 1 = legal move, 0 = illegal move.
+    """
+    env = chess_v6.env() 
+    env.reset()
+    env.state = state # Set the board to the given state
+    
+    env.agent_selection = player  # Set the current player
+    observation, _, _, _, _ = env.last()  # Get the observation
+
+    action_mask = observation["action_mask"]  
+    return action_mask
 
 # takes raw policy logits and returns legal move logits
 # prepare PettingZoo env state to network-ready state
