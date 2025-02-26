@@ -46,10 +46,11 @@ while not termination and not truncation:
         print(f'MCTS with {sims} sims completes after {time.time()-start} s')
 
 
+
         # NOTE filter policy vector to legal moves
         start = time.time()
         
-        action = get_net_best_legal(policy=policy, legal_moves=observation['action_mask'])
+        action = get_net_best_legal(policy_vec=policy, legal_moves=observation['action_mask'])
         print(f'Time to get action: {time.time()-start} s')
 
     # take action
