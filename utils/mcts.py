@@ -1,7 +1,8 @@
 import numpy as np
 from copy import deepcopy
-from utils.chess_utils_local import get_observation
-from utils.utils import prepare_state_for_net
+from utils.chess_utils_local import get_observation, legal_moves, result_to_int
+from utils.utils import prepare_state_for_net, filter_legal_moves
+import torch
 
 # TODO make good comments
 class Node:
@@ -23,13 +24,11 @@ def backup(node, v=0):
     # TODO what is virtual loss?
     return backup(node=node.parent, v=v)
 
+@torch.no_grad()
 def expand(node, net):
     # if game ends
     if node.state.is_insufficient_material() or node.state.can_claim_draw():
-        result_string = node.state.outcome()
-        if result_string == '1-0': v = 1
-        elif result_string == '0-1': v = -1
-        elif result_string == '1/2-1/2': v = 0
+        v = result_to_int(result_string=node.state.outcome())
 
         return backup(node=node, v=v)
 
@@ -39,12 +38,25 @@ def expand(node, net):
         q_vec = np.array([child.q for child in node.children])
         n_vec = np.array([child.n for child in node.children])
 
-        state_tensor = get_observation(orig_board=node.state, player=)
-        state_tensor = prepare_state_for_net(state_tensor)
+        state_tensor = get_observation(orig_board=node.state, player=int(node.state.turn))
+        # TODO actually handle board_history
+        board_history = np.zeros((8, 8, 104), dtype=bool)
+        state_tensor = np.dstack((state_tensor[:, :, :7], board_history))
 
-        probs = net.forward(state_tensor)
+        input(state_tensor.shape)
+
+        state_tensor = prepare_state_for_net(state=state_tensor.copy())
+
+        policy, v = net.forward(state_tensor)
         # 
-        p_vec = filter_legal_moves(probs)
+
+        # TODO handle legal moves!
+        legal_moves_iter = (legal_moves(orig_board=node.state))
+        action_mask = np.zeros(4672, "int8")
+        for i in legal_moves_iter:
+            action_mask[i] = 1
+
+        p_vec = filter_legal_moves(policy_vec=policy, legal_moves=action_mask)
 
         u_vec = c_puct*np.sqrt(sum(n_vec))*np.divide(p_vec, 1+n_vec)
 
@@ -91,6 +103,4 @@ def mcts(state, net, tau, sims=1):
     # TODO return 
 
     return action, value, 
-
-
 
