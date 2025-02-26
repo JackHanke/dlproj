@@ -1,6 +1,5 @@
 import yaml
 from dataclasses import dataclass
-from typing import List
 
 
 @dataclass
