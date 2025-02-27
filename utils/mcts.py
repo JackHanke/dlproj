@@ -21,50 +21,62 @@ class Node:
         self.q = 0
 
 # takes python-chess board and returns chosen move (in python-chess format)
-def choose_move(node, net):
+def choose_move(node, net, verbose=False):
     # prepare board for network inference
     start = time.time()
+    # NOTE uhh
     state_tensor = get_observation(orig_board=node.state, player=int(node.state.turn))
+
     # TODO actually handle board_history. Currently filling board history with zeros, but should instead track history of boards in sim
     board_history = np.zeros((8, 8, 104), dtype=bool)
     state_tensor = np.dstack((state_tensor[:, :, :7], board_history))
     state_tensor = prepare_state_for_net(state=state_tensor.copy())
-    print(f'state_tensor formatting: {time.time()- start} s')
+    if verbose: print(f'state_tensor formatting: {time.time()- start} s')
 
     # run network
     start = time.time()
     policy, v = net.forward(state_tensor)
-    print(f'net evaluation: {time.time()- start} s')
+    if verbose: print(f'net evaluation: {time.time()- start} s')
 
     # compute legal move logits vector p_vec
     start = time.time()
-    legal_moves_iter = (legal_moves(orig_board=node.state))
+    # python-chess format
+    legal_moves_codes = list(node.state.legal_moves)
+    # network-friendly numbers
+    legal_moves_nums = (legal_moves(orig_board=node.state))
     action_mask = np.zeros(4672, "int8")
-    for i in legal_moves_iter: action_mask[i] = 1
+    for i in legal_moves_nums: action_mask[i] = 1
     action_mask = torch.tensor(action_mask)
     p_vec = renormalize_network_output(policy_vec=policy, legal_moves=action_mask)
-    print(f'filter to legal moves: {time.time()- start} s')
+    if verbose: print(f'filter to legal moves: {time.time()- start} s')
 
-    # make child nodes with the new move made
+    # access nodes or spoof values 
     start = time.time()
-    for move in node.state.legal_moves:
-        new_state = deepcopy(node.state)
-        new_state.push(move)
-        new_node = Node(state=new_state, parent=node, action_from_parent=move)
-        node.children.append(new_node)
-    print(f'make new nodes: {time.time()- start} s')
+    q_vec, n_vec = [], []
+    for move in legal_moves_nums:
+        # get values if they exist
+        try:
+            child_node = node.children[move]
+            q_vac.append(child_node.q)
+            n_vac.append(child_node.n)
+        # otherwise they are zero
+        except KeyError:
+            q_vec.append(0)
+            n_vec.append(0)
+
+    q_vec = torch.tensor(q_vec).unsqueeze(1)
+    n_vec = torch.tensor(n_vec).unsqueeze(1)
+    if verbose: print(f'make q and n vectors: {time.time()- start} s')
 
     # compute the best move using collected information
     # create vector of q and n values
     start = time.time()
-    q_vec = torch.tensor([child.q for child in node.children]).unsqueeze(1)
-    n_vec = torch.tensor([child.n for child in node.children]).unsqueeze(1)
     # compute u vector
     c_puct = 1
     u_vec = c_puct*torch.sqrt(sum(n_vec))*torch.divide(p_vec, 1+n_vec)
     # choose action
-    chosen_move = np.argmax(q_vec + u_vec)
-    print(f'choose action with statistics: {time.time()- start} s')
+    chosen_move = legal_moves_codes[np.argmax(q_vec + u_vec)]
+    if verbose: print(f'choose action with statistics: {time.time()- start} s')
 
     return chosen_move
 
@@ -94,7 +106,7 @@ def expand(node, net, recursion_count=0):
     # if the game has gone on too long, it's a draw
     if recursion_count > 60:
         # backup the sim with draw scoring
-        return vanilla_backup(node=node, v=0, root_color=root_color)
+        return backup(node=node, v=0, root_color=root_color)
 
     # if the node is a terminal state...
     elif is_game_over(board=node.state):
@@ -105,7 +117,7 @@ def expand(node, net, recursion_count=0):
 
     # else if non-terminal state...
     else:
-        # choose best move
+        # choose best move, in the python-chess format
         chosen_move = choose_move(node=node, net=net)
         # either the next node has already been seen...
         try:
@@ -114,7 +126,7 @@ def expand(node, net, recursion_count=0):
         except KeyError:
             next_state = deepcopy(node.state)
             next_state.push(chosen_move)
-            next_node = VanillaNode(
+            next_node = Node(
                 state=next_state,
                 parent=node,
                 action_from_parent=chosen_move
@@ -129,26 +141,20 @@ def mcts(state, net, tau, sims=1):
     root = Node(state = state)
 
     # TODO figure out how to parallelize
+    tot_start = time.time()
     for sim in range(sims):
         start = time.time()
         expand(node=root, net=net)
         print(f'Total time for sim {sim}: {time.time()-start} s')
+    print(f'Total time for {sims} sims: {time.time()-tot_start} s')
 
-    if tau == 0:
-        # TODO argmax? 1/tau something something
-        action = None
-    elif tau > 0:
-        N = np.array([child.n for child in root.children])**(1/tau)
-
-        # TODO this is not correct!!! need to add 'u' somehow
-        pi = N / sum(N)
-        # pi_vec = torch.tensor([child.q for child in root.children])
-        action = np.random.choice(a=[child.action_from_parent for child in root.children], p=pi)
+    # choose final action 
+    pi = torch.tensor([child.n**(1/tau) for move, child in root.children.items()])
+    pi = pi/sum(pi)
+    chosen_move_index = torch.argmax(pi)
+    chosen_move = list(root.children.items())[chosen_move_index][0]
+    print(chosen_move)
 
     value = root.q
-
-    # TODO resign criterion
-
-    # TODO return 
-    return pi, value
+    return pi, value, chosen_move
 
