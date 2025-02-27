@@ -43,7 +43,7 @@ def test(verbose=False):
             sims = 100
             start = time.time()
             # NOTE state is the python-chess board obj env.board, not the observation obj
-            mcts(state=deepcopy(env.board), net=net, tau=1, sims=sims)
+            pi, val, chosen_move = mcts(state=deepcopy(env.board), net=net, tau=1, sims=sims)
             # vanilla_mcts(state=deepcopy(env.board), sims=sims)
             if verbose: print(f'MCTS with {sims} sims completes after {time.time()-start} s')
 

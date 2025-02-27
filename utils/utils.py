@@ -31,7 +31,7 @@ def renormalize_network_output(policy_vec, legal_moves):
     policy = torch.squeeze(policy_vec)
     # TODO why is there not a better way for this
     logits = torch.mul(policy, legal_moves) -20*(1-legal_moves)
-    renormalized_vec = torch.nn.functional.softmax(logits)
+    renormalized_vec = torch.nn.functional.softmax(logits, dim=0)
     return renormalized_vec
 
 def filter_legal_moves(policy_vec, legal_moves):
