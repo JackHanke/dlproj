@@ -15,12 +15,14 @@ def self_play(
     max_moves: int, 
     max_replay_len: int, 
     epsilon: float = 0.25, 
-    alpha: float = 0.03, 
+    alpha: float = 0.03
 ) -> ReplayMemory:
     """
     Runs self-play using MCTS in PettingZoo's Chess environment.
 
     Args:
+        network: (nn.Module): Current best player agent_theta star.
+        n_sims (int): Number of sims for mcts.
         num_games (int): Number of self-play games to generate.
         max_moves (int): Maximum number of moves per game before termination.
         max_replay_len (int): Max capacity for Replay Memory.
@@ -50,7 +52,7 @@ def self_play(
             tau = 1.0 if move_idx < 30 else 1e-5  
 
             # Run MCTS 
-            pi, _ = mcts(state, net=network, tau=tau, sims=n_sims)  # NOTE pi should already be a probability distribution
+            pi, v = mcts(state, net=network, tau=tau, sims=n_sims)  # NOTE pi should already be a probability distribution
 
             # Store state, policy, and value
             game_states.append(state)
@@ -89,6 +91,13 @@ def self_play(
                 game_result = env.rewards[current_player]  
                 last_player = player_to_int[current_player]
                 winning_player = game_result * last_player # Sanity check p*r=wp: (1*1=1, 1*-1=-1, -1*1=-1, -1*-1=1)
+                break
+
+            # Check for game truncation (idk what sets this to true in chess)
+            if env.truncations[current_player]:
+                print(f"Game truncated for {current_player} at move {move_idx}")
+                game_result = 0  
+                winning_player = 0
                 break
         else:
             game_result = 0  # Draw by reaching max moves
