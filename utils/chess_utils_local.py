@@ -137,6 +137,9 @@ def get_move_plane(move):
 moves_to_actions = {}
 actions_to_moves = {}
 
+# NOTE Jack added this
+def move_to_action(uci_move):
+    return moves_to_actions[uci_move]
 
 def action_to_move(board: chess.Board, action, player: int):
     base_move = chess.Move.from_uci(actions_to_moves[action])

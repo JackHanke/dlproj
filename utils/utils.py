@@ -4,6 +4,11 @@ from pettingzoo.classic import chess_v6
 
 # NOTE this file is a series of generally useful transformations
 
+# random argmax for RL action choices
+def rand_argmax(tens):
+    max_inds, = torch.where(tens == tens.max())
+    return np.random.choice(max_inds)
+
 def get_action_mask_from_state(state: np.ndarray, player: any) -> np.ndarray:
     """
     Returns the action mask for that player given a state and player.

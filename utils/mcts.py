@@ -1,7 +1,7 @@
 import numpy as np
 from copy import deepcopy
-from utils.chess_utils_local import get_observation, legal_moves, result_to_int
-from utils.utils import prepare_state_for_net, filter_legal_moves, renormalize_network_output
+from utils.chess_utils_local import get_observation, legal_moves, result_to_int, move_to_action
+from utils.utils import prepare_state_for_net, filter_legal_moves, renormalize_network_output, rand_argmax
 import torch
 import time
 
@@ -75,7 +75,9 @@ def choose_move(node, net, verbose=False):
     c_puct = 1
     u_vec = c_puct*torch.sqrt(sum(n_vec))*torch.divide(p_vec, 1+n_vec)
     # choose action
-    chosen_move = legal_moves_codes[np.argmax(q_vec + u_vec)]
+    # TODO fix!!!
+    # chosen_move = legal_moves_codes[rand_argmax(q_vec + u_vec)]
+    chosen_move = legal_moves_codes[torch.argmax(q_vec + u_vec)]
     if verbose: print(f'choose action with statistics: {time.time()- start} s')
 
     return chosen_move
@@ -102,7 +104,7 @@ def backup(node, v=0):
     return backup(node=node.parent, v=v)
 
 @torch.no_grad()
-def expand(node, net, recursion_count=0):
+def expand(node, net, recursion_count=0, verbose=False):
     # if the game has gone on too long, it's a draw
     if recursion_count > 60:
         # backup the sim with draw scoring
@@ -118,7 +120,7 @@ def expand(node, net, recursion_count=0):
     # else if non-terminal state...
     else:
         # choose best move, in the python-chess format
-        chosen_move = choose_move(node=node, net=net)
+        chosen_move = choose_move(node=node, net=net, verbose=verbose)
         # either the next node has already been seen...
         try:
             next_node = node.children[chosen_move]
@@ -133,10 +135,10 @@ def expand(node, net, recursion_count=0):
             )
             node.children[chosen_move] = next_node
         # expand to chosen node
-        return expand(node=next_node, net=net, recursion_count=recursion_count+1)
+        return expand(node=next_node, net=net, recursion_count=recursion_count+1, verbose=verbose)
     
 # TODO
-def mcts(state, net, tau, sims=1):
+def mcts(state, net, tau, sims=1, verbose=False):
     # state is a python-chess board    
     root = Node(state = state)
 
@@ -144,17 +146,25 @@ def mcts(state, net, tau, sims=1):
     tot_start = time.time()
     for sim in range(sims):
         start = time.time()
-        expand(node=root, net=net)
-        print(f'Total time for sim {sim}: {time.time()-start} s')
-    print(f'Total time for {sims} sims: {time.time()-tot_start} s')
+        expand(node=root, net=net, verbose=verbose)
+        if verbose: print(f'Total time for sim {sim}: {time.time()-start} s')
+    if verbose: print(f'Total time for {sims} sims: {time.time()-tot_start} s')
 
     # choose final action 
-    pi = torch.tensor([child.n**(1/tau) for move, child in root.children.items()])
-    pi = pi/sum(pi)
-    chosen_move_index = torch.argmax(pi)
-    chosen_move = list(root.children.items())[chosen_move_index][0]
-    print(chosen_move)
+
+    # get denominator of pi calculation
+    pi_denom = sum([child.n**(1/tau) for child in root.children.values()])
+    # Turn data from tree into pi vector
+    pi = torch.tensor([0 for _ in range(4672)])
+    for move in root.state.legal_moves:
+        action = move_to_action(uci_move=move.uci())
+        try:
+            pi[action] = (root.children[move.uci()].n ** (1/tau))/pi_denom
+        except KeyError:
+            pi[action] = 0
+    pi = pi.unsqueeze(0)
 
     value = root.q
+    chosen_move = torch.argmax(pi)
     return pi, value, chosen_move
 
