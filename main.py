@@ -1,6 +1,6 @@
 import threading
 import torch
-from utils.training import train_on_replay_memory
+from utils.training import train_on_batch
 from utils.self_play import SelfPlayAgent
 from utils.memory import ReplayMemory
 from utils.networks import DemoNet
@@ -52,7 +52,7 @@ def self_play_loop(self_play_agent, replay_buffer, network, config):
 def training_loop(replay_buffer, network, optimizer, config, device):
     """Continuously trains the network using replay buffer data."""
     while True:
-        train_on_replay_memory(
+        train_on_batch(
             data=replay_buffer,
             network=network,
             batch_size=config.training.batch_size,
