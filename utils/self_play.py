@@ -46,6 +46,7 @@ class SelfPlayAgent:
 
     def run_self_play(
         self,
+        training_data: ReplayMemory,
         network: nn.Module,
         n_sims: int,
         num_games: int, 
@@ -53,11 +54,12 @@ class SelfPlayAgent:
         max_replay_len: int, 
         epsilon: float = 0.25, 
         alpha: float = 0.03
-    ) -> ReplayMemory:
+    ) -> None:
         """
         Runs self-play using MCTS in PettingZoo's Chess environment.
 
         Args:
+            training_data (ReplayMemory): Replay memory object.
             network: (nn.Module): Current best player agent_theta star.
             n_sims (int): Number of sims for mcts.
             num_games (int): Number of self-play games to generate.
@@ -65,13 +67,9 @@ class SelfPlayAgent:
             max_replay_len (int): Max capacity for Replay Memory.
             epsilon (float): Controls noise level.
             alpha (float): Dirchlet noise.
-
-        Returns:
-            ReplayMemory containing tuples (state, policy, game_result) for training.
         """
 
         env = chess_v6.env()  
-        training_data = ReplayMemory(maxlen=max_replay_len)
         player_to_int = {
             "player_0": 1,
             "player_1": -1
@@ -112,9 +110,9 @@ class SelfPlayAgent:
                 print(selected_move)
                 pi = pi.squeeze()
                 # Store state, policy, and value
-                game_states.append(state)
+                game_states.append(torch.from_numpy(state))
                 move_policies.append(pi)
-                players.append(player_to_int[current_player])
+                players.append(torch.tensor([player_to_int[current_player]]))
 
                 # Resignation logic
                 if move_idx > 10:
@@ -179,5 +177,3 @@ class SelfPlayAgent:
 
         # Adjust resignation threshold after batch of games
         self.adjust_v_resign()
-
-        return training_data
