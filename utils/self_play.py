@@ -25,7 +25,7 @@ class SelfPlayAgent:
         return random.random() < self.disable_resignation_prob
     
     def adjust_v_resign(self) -> None:
-        """ Adjusts the resignation threshold based on false resignation rates. """
+        """Adjusts the resignation threshold based on false resignation rates."""
         if self.total_resigned_games == 0:
             return  # Avoid division by zero
 
@@ -102,7 +102,7 @@ class SelfPlayAgent:
                     game_result = 0  
                     winning_player = 0
                     break
-                
+
                 state = observation['observation']
                 tau = 1.0 if move_idx < 30 else 1e-5  
 
@@ -130,9 +130,9 @@ class SelfPlayAgent:
                             break
 
                 # Apply Dirchlet noise only at root
-                if move_idx == 0:
-                    dirchlet_noise = np.random.dirichlet([alpha] * len(pi))
-                    pi = (1-epsilon) * pi + epsilon * dirchlet_noise
+                # if move_idx == 0:
+                #     dirchlet_noise = np.random.dirichlet([alpha] * len(pi))
+                #     pi = (1-epsilon) * pi + epsilon * dirchlet_noise
 
                 # # Get action mask and select move
                 # action_mask = get_action_mask_from_state(state=state, player=current_player)
