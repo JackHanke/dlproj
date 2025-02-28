@@ -9,14 +9,14 @@ import torch.optim as optim
 from typing import Union
 
 
-def train_on_replay_memory(
+def train_on_batch(
     data: ReplayMemory, 
     network: DemoNet, 
     batch_size: int, 
     device: torch.device, 
     optimizer: Union[optim.Adam, optim.SGD]
 ):
-    if len(data) < batch_size:
+    if len(data) <= batch_size:
         return
     # Zero grad
     optimizer.zero_grad()
