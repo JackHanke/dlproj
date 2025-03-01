@@ -28,7 +28,6 @@ def evaluator(
     threshold_games = int(num_games * win_threshold)
     # for game_idx in range(num_games):
     while (game_idx < num_games) or challenger_agent_wins >= threshold_games or current_best_agent_wins >= threshold_games:
-        game_idx += 1
         print('*'*50)
         print(f'Starting game #{game_idx}')
         should_disable = False
