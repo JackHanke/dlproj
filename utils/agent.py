@@ -3,7 +3,7 @@ from utils.mcts import mcts
 import chess
 
 class Agent:
-    def __init__(self, version: int, network: nn.Module, sims: int = 10):
+    def __init__(self, version: int, network: torch.nn.Module, sims: int = 10):
         self.version = version
         self.network = network
         self.sims = sims

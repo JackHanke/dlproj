@@ -148,7 +148,7 @@ class SelfPlaySession:
                 else:
                     adjusted_reward = -1
 
-                training_data.push(state, policy, adjusted_reward)  
+                training_data.push(state.float().permute(2, 0, 1), policy, torch.tensor([adjusted_reward], dtype=torch.float))  
 
             print(f"Completed game {game_idx + 1}/{num_games}")
 
