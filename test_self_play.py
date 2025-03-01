@@ -1,4 +1,4 @@
-from utils.self_play import SelfPlayAgent
+from utils.self_play import SelfPlaySession
 from utils.configs import load_config
 from utils.networks import DemoNet
 from pettingzoo.classic import chess_v6
@@ -9,9 +9,9 @@ import torch
 
 def main():
     network = DemoNet(num_res_blocks=1)
-    agent = SelfPlayAgent()
+    session = SelfPlaySession()
     replay_memory = ReplayMemory(1000)
-    agent.run_self_play(
+    session.run_self_play(
         training_data=replay_memory,
         network=network,
         n_sims=3,
