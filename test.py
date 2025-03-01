@@ -10,6 +10,7 @@ from copy import deepcopy
 import numpy as np
 from sys import platform
 import os
+from utils.agent import Agent
 
 # NOTE this file tests interaction with the PettingZoo Chess environment
 
@@ -61,5 +62,12 @@ def test(verbose=False):
     env.close()
 
 if __name__ == '__main__':
-    test(verbose=True)
+    # test(verbose=True)
+    agent_1 = Agent(version=1, network=DemoNet(num_res_blocks=1))
+    agent_2 = Agent(version=2, network=DemoNet(num_res_blocks=1))
+
+    winner_agent = evaluator(challenger_agent=agent_1, current_best_agent=agent_2)
+    print(f'Winner agent is Agent {winner_agent.version}')
+
+
 
