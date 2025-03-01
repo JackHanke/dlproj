@@ -2,7 +2,7 @@ from utils.self_play import SelfPlayAgent
 from utils.configs import load_config
 from utils.networks import DemoNet
 from pettingzoo.classic import chess_v6
-from utils.training import train_on_replay_memory
+from utils.training import train_on_batch
 from utils.memory import ReplayMemory, Transition
 import torch
 
@@ -10,10 +10,12 @@ import torch
 def main():
     network = DemoNet(num_res_blocks=1)
     agent = SelfPlayAgent()
+    replay_memory = ReplayMemory(1000)
     agent.run_self_play(
+        training_data=replay_memory,
         network=network,
-        n_sims=100,
-        num_games=10,
+        n_sims=10,
+        num_games=4,
         max_moves=100,
         max_replay_len=10000
     )
@@ -51,4 +53,4 @@ def test_replay_memory():
 
 
 if __name__ == "__main__":
-    test_replay_memory()
+    main()
