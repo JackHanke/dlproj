@@ -26,7 +26,7 @@ class Node:
         self.q = 0 # mean reward from this Node
 
 # creates the final pi tensor (same size as network output)
-def create_pi_vector(node: type[Node], tau: float):
+def create_pi_vector(node: Node, tau: float):
     pi = [0 for _ in range(4672)]
     action_mask = torch.tensor(get_action_mask(orig_board=node.state))
     legal_action_indexes = torch.nonzero(action_mask)
@@ -62,7 +62,7 @@ def create_pi_vector(node: type[Node], tau: float):
 
 # takes python-chess board and returns chosen move (in python-chess format)
 @torch.no_grad()
-def choose_move(node: type[Node], net: torch.nn.Module, recursion_count: int, verbose: bool = False):
+def choose_move(node: Node, net: torch.nn.Module, recursion_count: int, verbose: bool = False):
     # prepare board for network inference
     start = time.time()
     # NOTE it is possible player=node.state.turn or something like that, im not sure
@@ -81,6 +81,7 @@ def choose_move(node: type[Node], net: torch.nn.Module, recursion_count: int, ve
     # TODO send state to network for inference
     # run network
     start = time.time()
+    net.eval()
     policy, v = net.forward(state_tensor)
     if verbose: print(f'net evaluation: {time.time()- start} s')
 
@@ -137,7 +138,7 @@ def is_game_over(board: chess.Board):
     return game_over
 
 # backup function for MCTS, loops until hitting the root node (which is the node without a parent)
-def backup(node: type[Node], v: int = 0):
+def backup(node: Node, v: int = 0):
     node.n += 1
     node.w += v
     node.q = node.w/node.n
@@ -147,7 +148,7 @@ def backup(node: type[Node], v: int = 0):
     return backup(node=node.parent, v=v)
 
 @torch.no_grad()
-def expand(node: type[Node], net: torch.nn.Module, recursion_count: int = 0, verbose: bool = False):
+def expand(node: Node, net: torch.nn.Module, recursion_count: int = 0, verbose: bool = False):
     # if the game has gone on too long, it's a draw TODO delete this check?
     if recursion_count > 60:
         # backup the sim with draw scoring
@@ -200,5 +201,5 @@ def mcts(state: chess.Board, net: torch.nn.Module, tau: int, sims: int = 1, verb
     value = root.q
     # get best value calculated from pi
     chosen_action = int(torch.argmax(pi))
-    return pi, value, chosen_action
+    return pi, value, chosen_action, root.children[]
 
