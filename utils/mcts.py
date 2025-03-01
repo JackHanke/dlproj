@@ -36,12 +36,16 @@ def create_pi_vector(node: type[Node], tau: float):
     if tau == 0:
         most_visited_action, highest_visit_count = 0, 0
         for move, action in zip(legal_moves_uci, legal_action_indexes):
-            action = action.item()
-            visit = (node.children[chess.Move.from_uci(move)].n)
-            if visit > highest_visit_count:
-                highest_visit_count = visit
-                most_visited_action = action
+            try:
+                action = action.item()
+                visit = (node.children[chess.Move.from_uci(move)].n)
+                if visit > highest_visit_count:
+                    highest_visit_count = visit
+                    most_visited_action = action
+            except KeyError:
+                pass
         pi[action] = 1
+        pi = torch.tensor(pi).unsqueeze(0)    
         return pi
 
     pi_denom = sum([child.n**(1/tau) for child in node.children.values()])
