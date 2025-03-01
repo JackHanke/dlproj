@@ -1,14 +1,17 @@
 from pettingzoo.classic import chess_v6
 from utils.agent import Agent
+from copy import deepcopy
+
 
 # records results of num_games games between challenger and current best agent, returns winner of tournament
 def evaluator(
     challenger_agent: Agent, 
     current_best_agent: Agent, 
+    max_moves: int,
     num_games: int,
     v_resign: float, 
     verbose = False
-    ) -> Agent :
+) -> Agent:
 
     env = chess_v6.env()  
     player_to_int = {
@@ -25,6 +28,7 @@ def evaluator(
     threshold_games = int(num_games * win_threshold)
     # for game_idx in range(num_games):
     while (game_idx < num_games) or challenger_agent_wins >= threshold_games or current_best_agent_wins >= threshold_games:
+        game_idx += 1
         print('*'*50)
         print(f'Starting game #{game_idx}')
         should_disable = False

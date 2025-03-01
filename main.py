@@ -6,6 +6,8 @@ from utils.memory import ReplayMemory
 from utils.networks import DemoNet
 from utils.configs import load_config, Config
 from utils.optimizer import get_optimizer  
+from utils.evaluator import evaluator
+from utils.agent import Agent
 
 
 def setup():
@@ -65,42 +67,42 @@ def train(replay_buffer: ReplayMemory, network: DemoNet, optimizer: any, config:
 
 
 def main():
-    """Main function to initialize components and start self-play and training in parallel."""
-    config, device, replay_buffer, network, optimizer, self_play_agent = setup()
+    device = "cpu"
+    self_play_session = SelfPlaySession()
+    memory = ReplayMemory(1000)
+    current_best_network = DemoNet(num_res_blocks=1)
+    challenger_network = DemoNet(num_res_blocks=1)
+    current_best_agent = Agent(version=0, network=current_best_network, sims=5)
+    challenger_agent = Agent(version=1, network=challenger_network, sims=5)
+    self_play_session.run_self_play(
+        training_data=memory,
+        network=current_best_network,
+        n_sims=3,
+        num_games=2,
+        max_moves=100
+    )
 
-    for i in range(1000):  # Run for 1000 iterations
-        print(f"\nStarting iteration {i+1}")
+    print("\nTraining on batch...")
+    train_on_batch(
+        data=memory, 
+        network=current_best_network,
+        batch_size=1,
+        device=device,
+        optimizer=get_optimizer('adam', lr=0.0001, weight_decay=1e-4, model=current_best_network)
+    )
 
-        # Create the self-play thread
-        self_play_thread = threading.Thread(
-            target=self_play, 
-            args=(self_play_agent, replay_buffer, network, config), 
-            daemon=True
-        )
+    print("\nEvaluating...")
+    current_best_agent = evaluator(
+        challenger_agent=challenger_agent, 
+        current_best_agent=current_best_agent, 
+        max_moves=100,
+        num_games=3, 
+        v_resign=self_play_session.v_resign, 
+        verbose=True
+    )
 
-        # Start the self-play thread
-        self_play_thread.start()
+    # TODO process new best agent
 
-        # Create and start the training thread (keeps training while self-play is running)
-        training_thread = threading.Thread(
-            target=train, 
-            args=(replay_buffer, network, optimizer, config, device, self_play_thread), 
-            daemon=True
-        )
-
-        training_thread.start()
-
-        # Wait for self-play to complete
-        self_play_thread.join()
-
-        # Wait for training to finish (it will stop once self-play ends)
-        training_thread.join()
-
-        # Evalulate function here with best network
-        # evalulate(network)
-
-        # Perform any additional logic after each iteration
-        print("Iteration complete. Proceeding to next iteration.")
 
 if __name__ == "__main__":
     main()
