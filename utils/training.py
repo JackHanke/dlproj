@@ -16,6 +16,7 @@ def train_on_batch(
     device: torch.device, 
     optimizer: Union[optim.Adam, optim.SGD]
 ):
+    network.train()
     if len(data) <= batch_size:
         return
     # Zero grad
