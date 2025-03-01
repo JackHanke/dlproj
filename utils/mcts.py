@@ -28,6 +28,19 @@ class Node:
 # creates the final pi tensor (same size as network output)
 def create_pi_vector(node: type[Node], tau: float):
     pi = [0 for _ in range(4672)]
+    if tau == 0:
+        torch.argmax()
+
+        most_visited_action, highest_visit_count = 0, 0
+        for move, action in zip(legal_moves_uci, legal_action_indexes):
+            action = action.item()
+            visit = (node.children[chess.Move.from_uci(move)].n)
+            if visit > highest_visit_count:
+                highest_visit_count = visit
+                most_visited_action = action
+        pi[action] = 1
+        return pi
+
     pi_denom = sum([child.n**(1/tau) for child in node.children.values()])
 
     action_mask = torch.tensor(get_action_mask(orig_board=node.state))
