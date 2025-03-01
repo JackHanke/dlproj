@@ -76,6 +76,7 @@ class SelfPlayAgent:
         }
 
         for game_idx in range(num_games):
+            print(f'Starting game #{game_idx}')
             should_disable = False
             supposed_winner = None # For resgin false positive logic
             env.reset()
@@ -86,6 +87,7 @@ class SelfPlayAgent:
             for move_idx in range(max_moves):
                 current_player = env.agent_selection
                 observation, reward, termination, truncation, info = env.last()
+                print(move_idx)
 
                 # Check for game termination
                 if termination:
@@ -105,7 +107,9 @@ class SelfPlayAgent:
                 tau = 1.0 if move_idx < 30 else 1e-5  
 
                 # Run MCTS 
+                print('Starting mcts...')
                 pi, v, selected_move = mcts(deepcopy(env.board), net=network, tau=tau, sims=n_sims)  # NOTE pi should already be a probability distribution
+                print('Finished mcts!')
                 selected_move = selected_move.item()
                 print(selected_move)
                 pi = pi.squeeze()

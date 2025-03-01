@@ -3,13 +3,13 @@ training:
     initial: 0.2
   batch_size: 2048
   momentum: 0.9
-  weight_decay: 1e-4
+  weight_decay: 0.0001
   loss_weights:
     policy_loss: 1.0
     value_loss: 1.0
   training_steps: 700000
   num_self_play_games: 4900000
-  optimizer: "SGD"
+  optimizer: "adam"
   data_buffer_size: 500000
   checkpoint_interval: 1000
   evaluation_games: 400
