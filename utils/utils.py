@@ -6,7 +6,7 @@ from pettingzoo.classic import chess_v6
 
 # random argmax for RL action choices
 def rand_argmax(tens):
-    max_inds, = torch.where(tens == tens.max())
+    max_inds, _ = torch.where(tens == tens.max())
     return np.random.choice(max_inds)
 
 def get_action_mask_from_state(state: np.ndarray, player: any) -> np.ndarray:
@@ -31,7 +31,7 @@ def get_action_mask_from_state(state: np.ndarray, player: any) -> np.ndarray:
 def prepare_state_for_net(state):
     return torch.tensor(state).float().permute(2, 0, 1).unsqueeze(0)
 
-# transform raw network output into probability distribution over legal moves
+# transform raw network output into probability distribution over legal moves the size of the all-action vector
 def renormalize_network_output(policy_vec, legal_moves):
     policy = torch.squeeze(policy_vec)
     # TODO why is there not a better way for this
@@ -42,9 +42,20 @@ def renormalize_network_output(policy_vec, legal_moves):
 def filter_legal_moves(policy_vec, legal_moves):
     policy = torch.squeeze(policy_vec)
     # get legal move indices
-    legal_moves = torch.tensor(legal_moves)
+    # legal_moves = torch.tensor(legal_moves)
     legal_indices = torch.nonzero(legal_moves)
     return policy[legal_indices]
+
+# 
+def filter_legal_moves_and_renomalize(policy_vec, legal_moves):
+    policy = torch.squeeze(policy_vec)
+    # get legal move indices
+    legal_indices = torch.nonzero(legal_moves)
+    legal_logits = policy[legal_indices]
+    p_vec = torch.nn.functional.softmax(legal_logits, dim=0)
+    return p_vec
+
+
 
 # get index of highest logit among legal positions
 def get_net_best_legal(policy_vec, legal_moves):

@@ -137,10 +137,6 @@ def get_move_plane(move):
 moves_to_actions = {}
 actions_to_moves = {}
 
-# NOTE Jack added this
-def move_to_action(uci_move):
-    return moves_to_actions[uci_move]
-
 def action_to_move(board: chess.Board, action, player: int):
     base_move = chess.Move.from_uci(actions_to_moves[action])
 
@@ -199,6 +195,13 @@ def legal_moves(orig_board: chess.Board):
 
     return legal_moves
 
+# NOTE Jack added this, ripped from PettingZoo source
+def get_action_mask(orig_board: chess.Board):
+    action_mask = np.zeros(4672, "int8")
+    # NOTE mirrored!
+    for i in legal_moves(orig_board=orig_board):
+        action_mask[i] = 1
+    return action_mask
 
 def get_observation(orig_board: chess.Board, player: int):
     """Returns observation array.
