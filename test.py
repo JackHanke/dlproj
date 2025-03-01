@@ -44,10 +44,10 @@ def test(verbose=False):
                 print(f'Time to compute policy: {time.time()-start} s')
 
             start = time.time()
-            sims = 3
-            pi, val, action = mcts(state=deepcopy(env.board), net=net, tau=1, sims=sims)
+            sims = 10
+            pi, val, action = mcts(state=deepcopy(env.board), net=net, tau=1, sims=sims, verbose=False)
             if verbose: print(f'MCTS with {sims} sims completes after {time.time()-start} s')
-            # input()
+            input()
 
         # take action
         start = time.time()
@@ -60,5 +60,6 @@ def test(verbose=False):
 
     env.close()
 
-test(verbose=True)
+if __name__ == '__main__':
+    test(verbose=True)
 
