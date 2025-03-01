@@ -87,7 +87,6 @@ class SelfPlayAgent:
             for move_idx in range(max_moves):
                 current_player = env.agent_selection
                 observation, reward, termination, truncation, info = env.last()
-                print(move_idx)
 
                 # Check for game termination
                 if termination:
@@ -104,17 +103,16 @@ class SelfPlayAgent:
                     break
 
                 state = observation['observation']
-                tau = 1.0 if move_idx < 30 else 1e-5  
+                tau = 1.0 if move_idx < 30 else 0
 
                 # Run MCTS 
                 print('Starting mcts...')
                 pi, v, selected_move = mcts(deepcopy(env.board), net=network, tau=tau, sims=n_sims)  # NOTE pi should already be a probability distribution
                 print('Finished mcts!')
-                selected_move = selected_move.item()
-                print(selected_move)
+                print(f"Selected move: {selected_move}")
                 pi = pi.squeeze()
                 # Store state, policy, and value
-                game_states.append(torch.from_numpy(state))
+                game_states.append(torch.from_numpy(state.copy()))
                 move_policies.append(pi)
                 players.append(torch.tensor([player_to_int[current_player]]))
 
