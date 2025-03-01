@@ -1,5 +1,5 @@
 from utils.networks import DemoNet
-from utils.self_play import SelfPlayAgent
+from utils.self_play import SelfPlaySession
 from utils.losses import combined_loss
 from utils.memory import ReplayMemory
 import torch

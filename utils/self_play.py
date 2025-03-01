@@ -10,7 +10,7 @@ from copy import deepcopy
 
 
 # TODO, make epsilon and alpha input params into run self play
-class SelfPlayAgent:
+class SelfPlaySession:
     def __init__(self, v_resign_start: float = -0.95):
         self.v_resign = v_resign_start
         self.disable_resignation_prob = 0.1

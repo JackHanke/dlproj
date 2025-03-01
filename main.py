@@ -1,7 +1,7 @@
 import threading
 import torch
 from utils.training import train_on_batch
-from utils.self_play import SelfPlayAgent
+from utils.self_play import SelfPlaySession
 from utils.memory import ReplayMemory
 from utils.networks import DemoNet
 from utils.configs import load_config, Config
@@ -29,14 +29,14 @@ def setup():
     )
 
     # Initialize self-play agent
-    self_play_agent = SelfPlayAgent(v_resign_start=config.self_play.resign_threshold)
+    self_play_agent = SelfPlaySession(v_resign_start=config.self_play.resign_threshold)
 
     return config, device, replay_buffer, network, optimizer, self_play_agent
 
 
-def self_play(self_play_agent: SelfPlayAgent, replay_buffer: ReplayMemory, network: DemoNet, config: Config):
+def self_play(self_play_session: SelfPlaySession, replay_buffer: ReplayMemory, network: DemoNet, config: Config):
     """Run a self-play session and store data in the replay buffer."""
-    self_play_agent.run_self_play(
+    self_play_session.run_self_play(
         training_data=replay_buffer,
         network=network,
         n_sims=5,
