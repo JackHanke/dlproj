@@ -5,7 +5,11 @@ import time
 from utils.mcts import mcts
 from utils.vanillamcts import vanilla_mcts
 from utils.utils import prepare_state_for_net, get_net_best_legal
+from utils.chess_utils_local import action_to_move
 from copy import deepcopy
+import numpy as np
+from sys import platform
+import os
 
 # NOTE this file tests interaction with the PettingZoo Chess environment
 
@@ -18,11 +22,11 @@ def test(verbose=False):
 
     termination, truncation = False, False
     while not termination and not truncation:
+        if verbose: print(env.board)
         # get state information
         start = time.time()
         observation, reward, termination, truncation, info = env.last()
         if verbose: print(f'Time to get environment information: {time.time()-start} s')
-
 
         if termination or truncation:
             action = None
@@ -32,26 +36,18 @@ def test(verbose=False):
             state_tensor = prepare_state_for_net(state=observation['observation'].copy())
             if verbose: print(f'Time to format state tensor for network: {time.time()-start} s')
 
-            if verbose: print(env.board)
-
             # compute policy and value
             start = time.time()
             policy, value = net.forward(state_tensor)
-            if verbose: print(f'Time to compute policy: {time.time()-start} s')
-            if verbose: print(f"Policy Shape: {policy.shape}, Value Shape: {value.shape}")
+            if verbose: 
+                # print(f"Policy Shape: {policy.shape}, Value Shape: {value.shape}")
+                print(f'Time to compute policy: {time.time()-start} s')
 
-            sims = 100
             start = time.time()
-            # NOTE state is the python-chess board obj env.board, not the observation obj
-            pi, val, chosen_move = mcts(state=deepcopy(env.board), net=net, tau=1, sims=sims)
-            # vanilla_mcts(state=deepcopy(env.board), sims=sims)
+            sims = 3
+            pi, val, action = mcts(state=deepcopy(env.board), net=net, tau=1, sims=sims)
             if verbose: print(f'MCTS with {sims} sims completes after {time.time()-start} s')
-
-            # NOTE filter policy vector to legal moves
-            start = time.time()
-            action = get_net_best_legal(policy_vec=policy, legal_moves=observation['action_mask'])
-            if verbose: print(f'Time to get action: {time.time()-start} s')
-            input()
+            # input()
 
         # take action
         start = time.time()
@@ -65,3 +61,4 @@ def test(verbose=False):
     env.close()
 
 test(verbose=True)
+
