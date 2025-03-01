@@ -201,5 +201,5 @@ def mcts(state: chess.Board, net: torch.nn.Module, tau: int, sims: int = 1, verb
     value = root.q
     # get best value calculated from pi
     chosen_action = int(torch.argmax(pi))
-    return pi, value, chosen_action, root.children[]
+    return pi, value, chosen_action
 
