@@ -71,6 +71,7 @@ class SelfPlayAgent:
         }
 
         for game_idx in range(num_games):
+            print('*'*50)
             print(f'Starting game #{game_idx}')
             should_disable = False
             supposed_winner = None # For resgin false positive logic
@@ -79,7 +80,8 @@ class SelfPlayAgent:
             move_policies = []
             players = []
 
-            for move_idx in range(max_moves):
+            for move_idx in range(1, max_moves+1):
+                print("Move #{}".format(move_idx))
                 current_player = env.agent_selection
                 observation, reward, termination, truncation, info = env.last()
 

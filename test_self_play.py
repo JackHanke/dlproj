@@ -14,10 +14,9 @@ def main():
     agent.run_self_play(
         training_data=replay_memory,
         network=network,
-        n_sims=10,
+        n_sims=3,
         num_games=4,
-        max_moves=100,
-        max_replay_len=10000
+        max_moves=100
     )
 
 
