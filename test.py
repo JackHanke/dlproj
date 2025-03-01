@@ -8,8 +8,6 @@ from utils.utils import prepare_state_for_net, get_net_best_legal
 from utils.chess_utils_local import action_to_move
 from copy import deepcopy
 import numpy as np
-from sys import platform
-import os
 from utils.agent import Agent
 
 # NOTE this file tests interaction with the PettingZoo Chess environment
