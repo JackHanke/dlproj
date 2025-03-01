@@ -1,7 +1,8 @@
-from collections import deque, namedtuple
+from collections import namedtuple
 import random
-from typing import Deque, Literal
 import torch
+import multiprocessing
+from typing import List, Dict, Literal
 
 Transition = namedtuple(
     "Transition",
@@ -11,26 +12,40 @@ Transition = namedtuple(
 
 class ReplayMemory:
     def __init__(self, maxlen: int):
-        self.memory: Deque[Transition] = deque([], maxlen=maxlen)
+        self.manager = multiprocessing.Manager()
+        self.memory = self.manager.list()  # Shared list between processes
+        self.lock = multiprocessing.Lock()  # Ensure safe access
+        self.maxlen = maxlen
 
     def push(self, *args) -> None:
         """Stores a new transition in memory."""
-        self.memory.append(Transition(*args))
+        with self.lock:
+            if len(self.memory) >= self.maxlen:
+                self.memory.pop(0)  # Maintain fixed size
+            self.memory.append(Transition(*args))
 
-    def sample(self, batch_size: int) -> list[Transition]:
-        """Samples a batch of transitions from memory."""
-        return random.sample(self.memory, batch_size)
-    
-    def sample_in_batches(self, batch_size: int) -> dict[Literal['state_batch', 'policy_batch', 'reward_batch'], torch.Tensor]:
-        """Samples a batch and splits them into 3 items of batches."""
+    def sample(self, batch_size: int) -> List[Transition]:
+        """Samples a batch of transitions from memory safely."""
+        with self.lock:
+            return random.sample(list(self.memory), batch_size)
+
+    def sample_in_batches(self, batch_size: int) -> Dict[Literal['state_batch', 'policy_batch', 'reward_batch'], torch.Tensor]:
+        """Samples a batch and splits them into separate tensors."""
         transition = self.sample(batch_size=batch_size)
+        if not transition:
+            return {
+                'state_batch': torch.tensor([]),
+                'policy_batch': torch.tensor([]),
+                'reward_batch': torch.tensor([])
+            }
         batch = Transition(*zip(*transition))
         return {
             'state_batch': torch.stack(batch.state),
             'policy_batch': torch.stack(batch.policy),
             'reward_batch': torch.stack(batch.game_result)
         }
-    
+
     def __len__(self) -> int:
         """Returns the current size of the memory buffer."""
-        return len(self.memory)
+        with self.lock:
+            return len(self.memory)
