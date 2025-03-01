@@ -9,6 +9,7 @@ import random
 from copy import deepcopy
 
 
+# TODO, make epsilon and alpha input params into run self play
 class SelfPlayAgent:
     def __init__(self, v_resign_start: float = -0.95):
         self.v_resign = v_resign_start
@@ -51,9 +52,6 @@ class SelfPlayAgent:
         n_sims: int,
         num_games: int, 
         max_moves: int, 
-        max_replay_len: int, 
-        epsilon: float = 0.25, 
-        alpha: float = 0.03
     ) -> None:
         """
         Runs self-play using MCTS in PettingZoo's Chess environment.
@@ -64,9 +62,6 @@ class SelfPlayAgent:
             n_sims (int): Number of sims for mcts.
             num_games (int): Number of self-play games to generate.
             max_moves (int): Maximum number of moves per game before termination.
-            max_replay_len (int): Max capacity for Replay Memory.
-            epsilon (float): Controls noise level.
-            alpha (float): Dirchlet noise.
         """
 
         env = chess_v6.env()  
@@ -128,28 +123,6 @@ class SelfPlayAgent:
                             print(f"Player {current_player} resigned at {move_idx}")
                             winning_player = supposed_winner
                             break
-
-                # Apply Dirchlet noise only at root
-                # if move_idx == 0:
-                #     dirchlet_noise = np.random.dirichlet([alpha] * len(pi))
-                #     pi = (1-epsilon) * pi + epsilon * dirchlet_noise
-
-                # # Get action mask and select move
-                # action_mask = get_action_mask_from_state(state=state, player=current_player)
-                # action_mask = torch.from_numpy(action_mask)
-
-                # # Apply temperature annealing
-                # legal_moves_p = torch.pow(pi[action_mask], 1 / tau)
-                # legal_moves_p /= torch.sum(legal_moves_p)  
-
-                # # Get valid move indices
-                # legal_moves_idx = np.where(action_mask)[0]
-
-                # # Select move based on MCTS policy
-                # if tau > 1e-5:  
-                #     selected_move = np.random.choice(legal_moves_idx, p=legal_moves_p)  
-                # else:
-                #     selected_move = legal_moves_idx[np.argmax(pi[action_mask])]  
 
                 # Play the move
                 env.step(selected_move)
