@@ -74,16 +74,18 @@ def main():
     current_best_network = DemoNet(num_res_blocks=1)
     challenger_network = DemoNet(num_res_blocks=1)
     # Suppose we only loop twice for this example
-    for _ in range(2):
+    for i in range(2):
+        print(">"*50, f'Dem0 Iteration {i+1}:','\n\n' ,sep='\n')
         # Init networks
         current_best_agent = Agent(version=0, network=current_best_network, sims=5)
         challenger_agent = Agent(version=1, network=challenger_network, sims=5)
 
         # run self play on challenger network
+        print('Running self play...')
         self_play_session.run_self_play(
             training_data=memory,
             network=challenger_network,
-            n_sims=8,
+            n_sims=2,
             num_games=2,
             max_moves=500
         )
@@ -107,6 +109,7 @@ def main():
             verbose=True
         )
         print(f'After this loop, the best_agent is {current_best_agent.version}')
+        print('\n\n')
 
         # Save best without allowing it to update next iteration
         current_best_network = deepcopy(current_best_agent.network)

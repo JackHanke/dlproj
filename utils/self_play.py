@@ -75,7 +75,7 @@ class SelfPlaySession:
             -1: 'player_1'
         }
 
-        for game_idx in range(num_games):
+        for game_idx in range(1, num_games+1):
             print('*'*50)
             print(f'Starting game #{game_idx}')
             should_disable = False
@@ -96,13 +96,14 @@ class SelfPlaySession:
                     game_result = reward 
                     last_player = player_to_int[current_player]
                     winning_player = game_result * last_player
-                    pbar.set_description(f"Game terminated for {current_player} at move {move_idx}. {winning_player} is the winner. Reward = {game_result}, Last Player = {last_player}, is truncted? {truncation}")
+                    pbar.set_description(f"Game terminated for {current_player} at move {move_idx}. {winning_player} is the winner. Reward = {reward}, Last Player = {last_player}")
                     break
 
                 if truncation:
+                    last_player = player_to_int[current_player]
                     game_result = 0  
                     winning_player = 0
-                    pbar.set_description(f"Game terminated for {current_player} at move {move_idx}. {int_to_player[winning_player]} is the winner")
+                    pbar.set_description(f"Game truncated for {current_player} at move {move_idx}. {winning_player} is the winner. Reward = {reward}, Last Player = {last_player}")
                     break
 
                 state = observation['observation']
@@ -154,7 +155,7 @@ class SelfPlaySession:
 
                 training_data.push(state.float().permute(2, 0, 1), policy, torch.tensor([adjusted_reward], dtype=torch.float))  
 
-            print(f"Completed game {game_idx + 1}/{num_games}")
+            print(f"Completed game {game_idx}/{num_games}")
 
         # Adjust resignation threshold after batch of games
         self.adjust_v_resign()
