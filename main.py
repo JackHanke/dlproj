@@ -100,6 +100,7 @@ def main():
         v_resign=self_play_session.v_resign, 
         verbose=True
     )
+    print(f'After this loop, the best_agent is {current_best_agent.version}')
 
     # TODO process new best agent
 
