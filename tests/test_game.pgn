@@ -1,0 +1,9 @@
+[Event "dem0 vs Stockfish"]
+[Site "The CPU"]
+[Date "????.??.??"]
+[Round "?"]
+[White "Agent 1"]
+[Black "Agent 2"]
+[Result "*"]
+
+1. e4 e5 2. c3 *
