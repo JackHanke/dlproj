@@ -1,4 +1,3 @@
-import threading
 import torch
 from utils.training import train_on_batch
 from utils.self_play import SelfPlaySession
@@ -35,36 +34,6 @@ def setup():
     self_play_agent = SelfPlaySession(v_resign_start=config.self_play.resign_threshold)
 
     return config, device, replay_buffer, network, optimizer, self_play_agent
-
-
-def self_play(self_play_session: SelfPlaySession, replay_buffer: ReplayMemory, network: DemoNet, config: Config):
-    """Run a self-play session and store data in the replay buffer."""
-    self_play_session.run_self_play(
-        training_data=replay_buffer,
-        network=network,
-        n_sims=5,
-        num_games=config.training.num_self_play_games,
-        max_moves=200,  # Adjustable max moves per game
-        max_replay_len=config.training.data_buffer_size,
-        epsilon=config.self_play.exploration_noise.epsilon,
-        alpha=config.self_play.exploration_noise.alpha
-    )
-
-
-def train(replay_buffer: ReplayMemory, network: DemoNet, optimizer: any, config: Config, device: torch.device, self_play_thread: threading.Thread):
-    """Continuously train while self-play is running."""
-    print("Training started.")
-
-    while self_play_thread.is_alive():  # Keep training while self-play is active
-        train_on_batch(
-            data=replay_buffer,
-            network=network,
-            batch_size=config.training.batch_size,
-            device=device,
-            optimizer=optimizer
-        )
-
-    print("Training stopped because self-play is complete.")
 
 
 def main():
