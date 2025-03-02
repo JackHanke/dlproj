@@ -1,7 +1,7 @@
 from collections import namedtuple
 import random
 import torch
-import multiprocessing
+import multiprocessing as mp
 from typing import List, Dict, Literal
 
 Transition = namedtuple(
@@ -9,13 +9,21 @@ Transition = namedtuple(
     ('state', 'policy', 'game_result') 
 )
 
-
 class ReplayMemory:
     def __init__(self, maxlen: int):
-        self.manager = multiprocessing.Manager()
+        self.manager = mp.Manager()
         self.memory = self.manager.list()  # Shared list between processes
-        self.lock = multiprocessing.Lock()  # Ensure safe access
+        self.lock = self.manager.Lock()      # Shared lock via manager
         self.maxlen = maxlen
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        # Remove the manager before pickling since it is not picklable.
+        state.pop("manager", None)
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
 
     def push(self, *args) -> None:
         """Stores a new transition in memory."""
