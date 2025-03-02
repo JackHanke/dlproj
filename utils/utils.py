@@ -1,8 +1,19 @@
 import torch
 import numpy as np
 from pettingzoo.classic import chess_v6
+import timeit
+from contextlib import ContextDecorator
 
-# NOTE this file is a series of generally useful transformations
+
+class Timer(ContextDecorator):
+    def __enter__(self):
+        self.start_time = timeit.default_timer()
+        return self
+    
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.end_time = timeit.default_timer()
+        elapsed_time = self.end_time - self.start_time
+        print(f"Execution time: {elapsed_time:.6f} seconds")
 
 # random argmax for RL action choices
 def rand_argmax(tens):
