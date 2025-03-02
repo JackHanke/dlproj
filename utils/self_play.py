@@ -1,7 +1,6 @@
 import numpy as np
 from pettingzoo.classic import chess_v6
 from utils.mcts import mcts  
-from utils.utils import get_action_mask_from_state
 from utils.memory import ReplayMemory
 import torch
 import torch.nn as nn
@@ -10,15 +9,20 @@ from copy import deepcopy
 from tqdm import tqdm
 
 
-# TODO, make epsilon and alpha input params into run self play
 class SelfPlaySession:
-    def __init__(self, v_resign_start: float = -0.95):
+    def __init__(
+        self, 
+        v_resign_start: float = -0.95, 
+        disable_resignation_fraction: float = 0.1, 
+        temperature_initial_moves: int = 30
+    ):
         self.v_resign = v_resign_start
-        self.disable_resignation_prob = 0.1
-        self.false_positive_threshold = 0.05
+        self.disable_resignation_prob = disable_resignation_fraction
+        self.false_positive_threshold = 0.05 # Keeping static
         self.full_game_resignations = 0
         self.false_resignations = 0
         self.total_resigned_games = 0
+        self.temperature_initial_moves = temperature_initial_moves
 
     def should_resign(self, v: torch.Tensor) -> bool:
         return v < self.v_resign
@@ -46,6 +50,7 @@ class SelfPlaySession:
         self.false_resignations = 0
         self.total_resigned_games = 0
 
+    # TODO, make epsilon and alpha input params into run self play
     def run_self_play(
         self,
         training_data: ReplayMemory,
@@ -107,7 +112,7 @@ class SelfPlaySession:
                     break
 
                 state = observation['observation']
-                tau = 1.0 if move_idx < 30 else 0
+                tau = 1.0 if move_idx < self.temperature_initial_moves else 0
 
                 # Run MCTS 
                 pi, v, selected_move = mcts(deepcopy(env.board), net=network, tau=tau, sims=n_sims)  # NOTE pi should already be a probability distribution

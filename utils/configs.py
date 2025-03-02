@@ -26,7 +26,6 @@ class TrainingConfig:
     data_buffer_size: int
     checkpoint_interval: int
     evaluation_games: int
-    evaluation_threshold: float
 
 
 @dataclass
@@ -58,8 +57,6 @@ class SelfPlayConfig:
 @dataclass
 class MCTSConfig:
     cpuct: float
-    dirichlet_alpha: float
-    dirichlet_weight: float
     num_threads: int
 
 
@@ -67,6 +64,7 @@ class MCTSConfig:
 class EvaluationConfig:
     tournament_games: int
     time_per_move: int  # seconds
+    evaluation_threshold: float
 
 
 @dataclass
@@ -83,7 +81,7 @@ def load_config(file_path: str = 'config.yaml') -> Config:
     Loads the configuration from a YAML file and parses it into structured data classes.
 
     Args:
-        file_path (str): Path to the YAML configuration file. It is "config.yaml" by default.
+        file_path (str): Path to the YAML configuration file. Defaults to "config.yaml".
 
     Returns:
         Config: A structured configuration object containing all the settings.
@@ -104,7 +102,6 @@ def load_config(file_path: str = 'config.yaml') -> Config:
             data_buffer_size=raw_config["training"]["data_buffer_size"],
             checkpoint_interval=raw_config["training"]["checkpoint_interval"],
             evaluation_games=raw_config["training"]["evaluation_games"],
-            evaluation_threshold=raw_config["training"]["evaluation_threshold"],
         ),
         network=NetworkConfig(**raw_config["network"]),
         self_play=SelfPlayConfig(
