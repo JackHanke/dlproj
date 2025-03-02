@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 import random
 from copy import deepcopy
+from tqdm import tqdm
 
 
 # TODO, make epsilon and alpha input params into run self play
@@ -69,6 +70,10 @@ class SelfPlaySession:
             "player_0": 1,
             "player_1": -1
         }
+        int_to_player = {
+            1: "player_0",
+            -1: 'player_1'
+        }
 
         for game_idx in range(num_games):
             print('*'*50)
@@ -80,33 +85,31 @@ class SelfPlaySession:
             move_policies = []
             players = []
 
-            for move_idx in range(1, max_moves+1):
-                print("Move #{}".format(move_idx))
+            pbar = tqdm(range(1, max_moves+1))
+            for move_idx in pbar:
                 current_player = env.agent_selection
                 observation, reward, termination, truncation, info = env.last()
+                pbar.set_description(f"Running move {move_idx} for {current_player}")
 
                 # Check for game termination
                 if termination:
-                    print(f"Game terminated for {current_player} at move {move_idx}")
-                    game_result = env.rewards[current_player]  
+                    game_result = reward 
                     last_player = player_to_int[current_player]
                     winning_player = game_result * last_player
+                    pbar.set_description(f"Game terminated for {current_player} at move {move_idx}. {winning_player} is the winner. Reward = {game_result}, Last Player = {last_player}, is truncted? {truncation}")
                     break
 
                 if truncation:
-                    print(f"Game truncated for {current_player} at move {move_idx}")
                     game_result = 0  
                     winning_player = 0
+                    pbar.set_description(f"Game terminated for {current_player} at move {move_idx}. {int_to_player[winning_player]} is the winner")
                     break
 
                 state = observation['observation']
                 tau = 1.0 if move_idx < 30 else 0
 
                 # Run MCTS 
-                print('Starting mcts...')
                 pi, v, selected_move = mcts(deepcopy(env.board), net=network, tau=tau, sims=n_sims)  # NOTE pi should already be a probability distribution
-                print('Finished mcts!')
-                print(f"Selected move: {selected_move}")
                 pi = pi.squeeze()
                 # Store state, policy, and value
                 game_states.append(torch.from_numpy(state.copy()))
@@ -132,6 +135,7 @@ class SelfPlaySession:
             else:
                 game_result = 0  # Draw by reaching max moves
                 winning_player = 0
+                pbar.set_description("Game is a draw due to reached max moves.")
 
             # False resignation check
             if should_disable:
