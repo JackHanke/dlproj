@@ -10,14 +10,14 @@ from utils.networks import DemoNet
 from utils.optimizer import get_optimizer  
 from utils.evaluator import evaluator
 from utils.agent import Agent
+from utils.utils import Timer
 
 
-def training_loop(stop_event, memory, network, device, optimizer_params):
+def training_loop(stop_event, memory, network, device, optimizer_params, counter):
     """
     Continuously train on a batch until stop_event is set.
     The optimizer is created inside the child process using optimizer_params.
     """
-    # Create the optimizer instance in the child process
     optimizer = get_optimizer(
         optimizer_name=optimizer_params["optimizer_name"],
         lr=optimizer_params["lr"],
@@ -27,9 +27,8 @@ def training_loop(stop_event, memory, network, device, optimizer_params):
     )
     
     i = 0
+    print(f"Memory length before self play: {len(memory)}")
     while not stop_event.is_set():
-        if i < 2:
-            print('This is a test to show multiprocessing works.')
         train_on_batch(
             data=memory,
             network=network,
@@ -38,7 +37,9 @@ def training_loop(stop_event, memory, network, device, optimizer_params):
             optimizer=optimizer
         )
         i += 1
-        time.sleep(0.01)
+
+    counter.value = i  # Store the final value of i in the shared variable
+    print(f'Memory length after self play: {len(memory)}')
 
 
 def main():
@@ -46,38 +47,33 @@ def main():
     self_play_session = SelfPlaySession()
     memory = ReplayMemory(1000)
     
-    # Create networks and share their memory
     current_best_network = DemoNet(num_res_blocks=1)
     challenger_network = DemoNet(num_res_blocks=1)
-    challenger_network.share_memory()  # Ensure the model's parameters are in shared memory
+    challenger_network.share_memory()  
     
-    # Loop twice for this example
     for i in range(2):
         print(">" * 50)
         print(f'Dem0 Iteration {i+1}:\n')
         
-        # Initialize agents
         current_best_agent = Agent(version=0, network=current_best_network, sims=5)
         challenger_agent = Agent(version=1, network=challenger_network, sims=5)
         
-        # Instead of creating an optimizer instance here,
-        # we prepare parameters for its creation.
         optimizer_params = {
             "optimizer_name": "adam",
             "lr": 0.0001,
             "weight_decay": 1e-4,
-            "momentum": 0.9  # Only used if you switch to SGD
+            "momentum": 0.9  
         }
         
-        # Create a stop event and start the training process
         stop_event = mp.Event()
+        counter = mp.Value("i", 0)  # Shared integer for storing i
+        
         training_process = mp.Process(
             target=training_loop,
-            args=(stop_event, memory, challenger_network, device, optimizer_params)
+            args=(stop_event, memory, challenger_network, device, optimizer_params, counter)
         )
         training_process.start()
         
-        # Run self-play concurrently with training
         print('Running self play...')
         self_play_session.run_self_play(
             training_data=memory,
@@ -87,10 +83,11 @@ def main():
             max_moves=500
         )
         
-        # Self-play finished, signal the training process to stop
         stop_event.set()
-        training_process.join()  # Wait for the training process to exit
+        training_process.join()
         
+        print(f"\nTraining iterations completed: {counter.value}")  # Print the value of i
+
         print("\nEvaluating...")
         current_best_agent = evaluator(
             challenger_agent=challenger_agent, 
@@ -101,12 +98,13 @@ def main():
             verbose=True
         )
         print(f'After this loop, the best_agent is {current_best_agent.version}\n\n')
-        
-        # Update networks for the next iteration
+
         current_best_network = deepcopy(current_best_agent.network)
         challenger_network = current_best_agent.network
-        challenger_network.share_memory()  # Make sure to share memory for the updated network
+        challenger_network.share_memory()  
+
 
 if __name__ == "__main__":
-    mp.set_start_method("spawn")  # Ensures compatibility across platforms
-    main()
+    with Timer():
+        mp.set_start_method("spawn")  
+        main()

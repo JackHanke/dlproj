@@ -8,6 +8,7 @@ from utils.optimizer import get_optimizer
 from utils.evaluator import evaluator
 from utils.agent import Agent
 from copy import deepcopy
+from utils.utils import Timer
 
 
 def setup():
@@ -87,4 +88,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    with Timer():
+        main()
