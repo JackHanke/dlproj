@@ -1,24 +1,35 @@
 import torch
-import threading
 import time
+import multiprocessing as mp
 from copy import deepcopy
 
 from utils.training import train_on_batch
 from utils.self_play import SelfPlaySession
 from utils.memory import ReplayMemory
 from utils.networks import DemoNet
-from utils.configs import load_config, Config
 from utils.optimizer import get_optimizer  
 from utils.evaluator import evaluator
 from utils.agent import Agent
 
 
-def training_loop(stop_event, memory, network, device, optimizer):
-    """Continuously train on batch until stop_event is set."""
+def training_loop(stop_event, memory, network, device, optimizer_params):
+    """
+    Continuously train on a batch until stop_event is set.
+    The optimizer is created inside the child process using optimizer_params.
+    """
+    # Create the optimizer instance in the child process
+    optimizer = get_optimizer(
+        optimizer_name=optimizer_params["optimizer_name"],
+        lr=optimizer_params["lr"],
+        weight_decay=optimizer_params["weight_decay"],
+        model=network,
+        momentum=optimizer_params.get("momentum", 0.0)
+    )
+    
     i = 0
     while not stop_event.is_set():
         if i < 2:
-            print('This is a test to show multithreading works.')
+            print('This is a test to show multiprocessing works.')
         train_on_batch(
             data=memory,
             network=network,
@@ -26,7 +37,7 @@ def training_loop(stop_event, memory, network, device, optimizer):
             device=device,
             optimizer=optimizer
         )
-        i+=1
+        i += 1
         time.sleep(0.01)
 
 
@@ -34,11 +45,13 @@ def main():
     device = "cpu"
     self_play_session = SelfPlaySession()
     memory = ReplayMemory(1000)
+    
+    # Create networks and share their memory
     current_best_network = DemoNet(num_res_blocks=1)
     challenger_network = DemoNet(num_res_blocks=1)
-    challenger_network.share_memory()
+    challenger_network.share_memory()  # Ensure the model's parameters are in shared memory
     
-    # Suppose we loop twice for this example
+    # Loop twice for this example
     for i in range(2):
         print(">" * 50)
         print(f'Dem0 Iteration {i+1}:\n')
@@ -47,22 +60,22 @@ def main():
         current_best_agent = Agent(version=0, network=current_best_network, sims=5)
         challenger_agent = Agent(version=1, network=challenger_network, sims=5)
         
-        # Create an optimizer for the challenger network.
-        # This optimizer instance will be shared with the training thread.
-        optimizer_instance = get_optimizer(
-            optimizer_name='adam',
-            lr=0.0001,
-            weight_decay=1e-4,
-            model=challenger_network
-        )
+        # Instead of creating an optimizer instance here,
+        # we prepare parameters for its creation.
+        optimizer_params = {
+            "optimizer_name": "adam",
+            "lr": 0.0001,
+            "weight_decay": 1e-4,
+            "momentum": 0.9  # Only used if you switch to SGD
+        }
         
-        # Create a stop event and start the training thread
-        stop_event = threading.Event()
-        training_thread = threading.Thread(
+        # Create a stop event and start the training process
+        stop_event = mp.Event()
+        training_process = mp.Process(
             target=training_loop,
-            args=(stop_event, memory, challenger_network, device, optimizer_instance)
+            args=(stop_event, memory, challenger_network, device, optimizer_params)
         )
-        training_thread.start()
+        training_process.start()
         
         # Run self-play concurrently with training
         print('Running self play...')
@@ -74,9 +87,9 @@ def main():
             max_moves=500
         )
         
-        # Self-play finished, signal the training thread to stop
+        # Self-play finished, signal the training process to stop
         stop_event.set()
-        training_thread.join()  # Wait for the training thread to exit
+        training_process.join()  # Wait for the training process to exit
         
         print("\nEvaluating...")
         current_best_agent = evaluator(
@@ -89,10 +102,11 @@ def main():
         )
         print(f'After this loop, the best_agent is {current_best_agent.version}\n\n')
         
-        # Update networks for next iteration
+        # Update networks for the next iteration
         current_best_network = deepcopy(current_best_agent.network)
         challenger_network = current_best_agent.network
-
+        challenger_network.share_memory()  # Make sure to share memory for the updated network
 
 if __name__ == "__main__":
+    mp.set_start_method("spawn")  # Ensures compatibility across platforms
     main()
