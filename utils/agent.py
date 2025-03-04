@@ -13,6 +13,9 @@ class Agent:
         _, value, action = mcts(state=board_state, net=self.network, tau=tau, sims=self.sims)
         # TODO once this returns a node as well, we cache the tree with the agent
         return action, value
+    
+    def compute_bayes_elo(self, *args):
+        raise NotImplementedError
 
 
 
