@@ -4,6 +4,7 @@ game = chess.pgn.Game()
 
 game.headers["Event"] = f"dem0 vs Stockfish"
 game.headers["Site"] = f"The CPU"
+# v:agent.version
 game.headers["White"] = f"Agent 1"
 game.headers["Black"] = f"Agent 2"
 
