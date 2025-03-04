@@ -5,15 +5,10 @@ import chess.engine
 
 # 
 stock_path = f'/Users/jack/vault/gradschool/dl/dlproj/stockfish-5-mac/Mac/stockfish-5-64'
-
 engine = chess.engine.SimpleEngine.popen_uci(stock_path)
-
-# TODO figure out the ELOs for skill levels
-skill_level = 1 # ELO: ~1000-2000
-# skill_level = 2 # ELO: ~
-# skill_level = 3 # ELO: ~
-
+skill_level = 1 # TODO ELO: ~1000-2000
 engine.configure({"Skill Level": skill_level})
+
 
 board = chess.Board()
 print(board)
