@@ -3,7 +3,7 @@ import time
 import multiprocessing as mp
 from copy import deepcopy
 
-from utils.training import train_on_batch
+from utils.training import train_on_batch, Checkpoint
 from utils.self_play import SelfPlaySession
 from utils.memory import ReplayMemory
 from utils.networks import DemoNet
@@ -46,17 +46,19 @@ def main():
     device = "cpu"
     self_play_session = SelfPlaySession()
     memory = ReplayMemory(1000)
+    checkpoint = Checkpoint(verbose=True)
     
     current_best_network = DemoNet(num_res_blocks=1)
     challenger_network = DemoNet(num_res_blocks=1)
     challenger_network.share_memory()  
-    
+
+    current_best_version = 0
     for i in range(2):
         print(">" * 50)
         print(f'Dem0 Iteration {i+1}:\n')
         
-        current_best_agent = Agent(version=0, network=current_best_network, sims=5)
-        challenger_agent = Agent(version=1, network=challenger_network, sims=5)
+        current_best_agent = Agent(version=current_best_version, network=current_best_network, sims=5)
+        challenger_agent = Agent(version=current_best_version+1, network=challenger_network, sims=5)
         
         optimizer_params = {
             "optimizer_name": "adam",
@@ -102,6 +104,7 @@ def main():
         current_best_network = deepcopy(current_best_agent.network)
         challenger_network = current_best_agent.network
         challenger_network.share_memory()  
+        current_best_version = current_best_agent.version
 
 
 if __name__ == "__main__":
