@@ -74,7 +74,7 @@ class Checkpoint:
         if self.verbose:
             print(f"Saved new best weights to {path}")
 
-    def step(self, weights_path: str, info_path: str, current_best_agent):
+    def step(self, weights_path: str, info_path: str, current_best_agent: Agent):
         assert info_path.split(".")[-1] == 'json', "Info path must be in JSON format."
         if current_best_agent.version > self.version:
             self.save_state_dict(path=weights_path)

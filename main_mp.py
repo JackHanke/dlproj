@@ -111,7 +111,7 @@ def main():
         current_best_version = current_best_agent.version
 
         # step checkpoint
-        checkpoint.step()
+        checkpoint.step(weights_path=weights_path, info_path=info_path, current_best_agent=deepcopy(current_best_agent))
 
 if __name__ == "__main__":
     with Timer():
