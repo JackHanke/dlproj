@@ -67,6 +67,7 @@ class Checkpoint:
         self.iteration = None
 
     def save_state_dict(self, path: str) -> None:
+        assert path.split(".")[-1] == ".pth", "Must be in .pth format."
         # Create directory if it doesn't exist
         os.makedirs(os.path.dirname(path), exist_ok=True)
         torch.save(self.best_weights, path)
@@ -74,6 +75,7 @@ class Checkpoint:
             print(f"Saved new best weights to {path}")
 
     def step(self, weights_path: str, info_path: str, current_best_agent):
+        assert info_path.split(".")[-1] == 'json', "Info path must be in JSON format."
         if current_best_agent.version > self.version:
             self.save_state_dict(path=weights_path)
             self.best_agent = current_best_agent

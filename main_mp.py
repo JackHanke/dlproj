@@ -11,6 +11,7 @@ from utils.optimizer import get_optimizer
 from utils.evaluator import evaluator
 from utils.agent import Agent
 from utils.utils import Timer
+import os
 
 
 def training_loop(stop_event, memory, network, device, optimizer_params, counter):
@@ -50,7 +51,10 @@ def main():
     
     current_best_network = DemoNet(num_res_blocks=1)
     challenger_network = DemoNet(num_res_blocks=1)
-    challenger_network.share_memory()  
+    challenger_network.share_memory()
+    base_path = "checkpoints/best_model/"
+    weights_path = os.path.join(base_path, "weights.pth")
+    info_path = os.path.join(base_path, "info.json")
 
     current_best_version = 0
     for i in range(2):
@@ -106,6 +110,8 @@ def main():
         challenger_network.share_memory()  
         current_best_version = current_best_agent.version
 
+        # step checkpoint
+        checkpoint.step()
 
 if __name__ == "__main__":
     with Timer():
