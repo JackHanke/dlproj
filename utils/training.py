@@ -10,7 +10,7 @@ import torch.optim as optim
 from typing import Union
 import json
 import os
-import multiprocessing as mp
+import torch.multiprocessing as mp
 
 
 def train_on_batch(
@@ -58,16 +58,17 @@ def _background_compute_elo_and_save(agent: Agent, info_path: str, verbose: str)
 
 
 class Checkpoint:
-    def __init__(self, verbose: bool):
+    def __init__(self, verbose: bool, compute_elo: bool = True):
+        self.compute_elo = compute_elo
         self.verbose = verbose
         self.best_agent = None
         self.best_weights = None
         self.elo = None
-        self.version = None
+        self.version = -1
         self.iteration = None
 
     def save_state_dict(self, path: str) -> None:
-        assert path.split(".")[-1] == ".pth", "Must be in .pth format."
+        assert path.split(".")[-1] == "pth", f"Must be in .pth format. Your current path is {path}."
         # Create directory if it doesn't exist
         os.makedirs(os.path.dirname(path), exist_ok=True)
         torch.save(self.best_weights, path)
@@ -82,12 +83,23 @@ class Checkpoint:
             self.best_weights = current_best_agent.network.state_dict()
             self.version = current_best_agent.version
 
-            if self.verbose:
-                print("Starting background process for Elo computation...")
+            if self.compute_elo:
+                if self.verbose:
+                    print("Starting background process for Elo computation...")
 
-            # Start the Elo computation in a separate process
-            p = mp.Process(
-                target=_background_compute_elo_and_save,
-                args=(current_best_agent, info_path, self.verbose)
-            )
-            p.start() # Will run in background since we dont have a .join()
+                # Start the Elo computation in a separate process
+                p = mp.Process(
+                    target=_background_compute_elo_and_save,
+                    args=(current_best_agent, info_path, self.verbose)
+                )
+                p.start() # Will run in background since we dont have a .join()
+            else:
+                info = {
+                    "version": current_best_agent.version
+                }
+                # Ensure the directory exists
+                os.makedirs(os.path.dirname(info_path), exist_ok=True)
+                with open(info_path, "w") as f:
+                    json.dump(info, f)
+                if self.verbose:
+                    print(f"Finished Elo computation and saved info to {info_path}")

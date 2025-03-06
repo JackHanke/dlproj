@@ -1,7 +1,7 @@
+import torch.multiprocessing as mp
 from collections import namedtuple
 import random
 import torch
-import multiprocessing as mp
 from typing import List, Dict, Literal
 
 Transition = namedtuple(
@@ -18,8 +18,7 @@ class ReplayMemory:
 
     def __getstate__(self):
         state = self.__dict__.copy()
-        # Remove the manager before pickling since it is not picklable.
-        state.pop("manager", None)
+        state.pop("manager", None)  # Manager is not picklable
         return state
 
     def __setstate__(self, state):

@@ -64,7 +64,7 @@ class DemoNet(nn.Module):
         value = self.value_fc(value)
 
         return policy_logits, value
-
+    
 
 class ResidualBlock(nn.Module):
     """
