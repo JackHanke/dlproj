@@ -1,6 +1,6 @@
 import torch
 import time
-import multiprocessing as mp
+import torch.multiprocessing as mp
 from copy import deepcopy
 
 from utils.training import train_on_batch, Checkpoint
@@ -28,7 +28,6 @@ def training_loop(stop_event, memory, network, device, optimizer_params, counter
     )
     
     i = 0
-    print(f"Memory length before self play: {len(memory)}")
     while not stop_event.is_set():
         train_on_batch(
             data=memory,
@@ -44,14 +43,13 @@ def training_loop(stop_event, memory, network, device, optimizer_params, counter
 
 
 def main():
-    device = "cpu"
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     self_play_session = SelfPlaySession()
     memory = ReplayMemory(1000)
-    checkpoint = Checkpoint(verbose=True)
+    checkpoint = Checkpoint(verbose=True, compute_elo=False)
     
     current_best_network = DemoNet(num_res_blocks=1)
-    challenger_network = DemoNet(num_res_blocks=1)
-    challenger_network.share_memory()
+    challenger_network = deepcopy(current_best_network)
     base_path = "checkpoints/best_model/"
     weights_path = os.path.join(base_path, "weights.pth")
     info_path = os.path.join(base_path, "info.json")
@@ -83,7 +81,7 @@ def main():
         print('Running self play...')
         self_play_session.run_self_play(
             training_data=memory,
-            network=challenger_network,
+            network=current_best_network,
             n_sims=2,
             num_games=2,
             max_moves=500
@@ -107,7 +105,6 @@ def main():
 
         current_best_network = deepcopy(current_best_agent.network)
         challenger_network = current_best_agent.network
-        challenger_network.share_memory()  
         current_best_version = current_best_agent.version
 
         # step checkpoint
