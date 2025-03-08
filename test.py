@@ -2,9 +2,9 @@ from pettingzoo.classic import chess_v6
 from utils.networks import DemoNet
 import torch
 import time
-# from utils.mcts import mcts
+from utils.mcts import mcts
 from utils.mcts_parallel import mcts
-from utils.vanillamcts import vanilla_mcts
+# from utils.vanillamcts import vanilla_mcts
 from utils.utils import prepare_state_for_net, get_net_best_legal
 from utils.chess_utils_local import action_to_move
 from copy import deepcopy
@@ -109,9 +109,9 @@ def test(verbose=False):
 
 if __name__ == '__main__':
     test(verbose=True)
-
     # agent_1 = Agent(version=1, network=DemoNet(num_res_blocks=1))
     # agent_2 = Agent(version=2, network=DemoNet(num_res_blocks=1))
+
     # winner_agent = evaluator(challenger_agent=agent_1, current_best_agent=agent_2)
     # print(f'Winner agent is Agent {winner_agent.version}')
 

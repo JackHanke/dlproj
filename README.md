@@ -6,18 +6,26 @@
 ## Project TODOs
 - Pipeline
     1. Self-play
-        - Everything
-    2. Evaluator
-        - Everything
-    3. Optimizer
-        - Everything
-    - Stockfish 5 was released on 2014-05-31
+        - ?
+    2. Internal Evaluator
+        - Something is fishy with number of games played
+    3. External Evaluator
+        - Something is fishy with number of games played
+        - Find out information on Stockfish ELO
+    4. Optimizer
+        - Ensure three copies of the network all remain on GPU and aren't getting passed back and forth
+        - 
+    5. MCTS
+        - Multiprocess everything
+            - Concurrent mcts for 100 sims 21 seconds (with `num_res_blocks=1` from starting position)
+            - With 8 processes 
+    - Write everything so it is configurable through `config.yaml` 
+    - 
 - Presentation
-    - Make presentation
+    - Update final presentation
 - For Fun
-    - Make pixelart of dem0 sitting on dead competitors
     - Make animated gif of dem0 moving its head
-    - Make dem0 with traffic cone on its head
+
 
 ## Network Architecture
 

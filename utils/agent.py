@@ -1,9 +1,10 @@
 import torch 
-from utils.mcts import mcts
 import chess
 import chess.engine
-from sys import platform
+from utils.mcts import mcts
+# from utils.mcts_parallel import mcts
 from utils.chess_utils_local import get_action_mask, legal_moves
+from sys import platform
 
 class Agent:
     def __init__(self, version: int, network: torch.nn.Module, sims: int = 10):

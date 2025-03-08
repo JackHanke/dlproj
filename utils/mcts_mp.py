@@ -7,29 +7,20 @@ import time
 import chess
 
 import concurrent.futures
+# import torch.multiprocessing as mp
+# import torch.multiprocessing.managers
 import multiprocessing
+from multiprocessing.managers import BaseManager
+
 
 # NOTE this code refers to a chess.Move and a UCI string as a 'move'
 # while the action indexes provided by Pettingzoo as an 'action'
 
 # node of Monte Carlo Tree
-class Node:
-    def __init__(
-            self, 
-            state: chess.Board, 
-            parent = None, 
-            action_from_parent: chess.Move = None
-        ):
-        self.state = state # python-chess board object
-        self.parent = parent # parent node of Node, None if root Node
-        self.action_from_parent = action_from_parent # chess.Move for action taken to arrive at Node, None for root
-        self.children = {} # dictionary of {chess.Move: child_Node}
-        self.n = 0 # number of times Node has been visited
-        self.w = 0 # total reward from this Node
-        self.q = 0 # mean reward from this Node
+
 
 # creates the final pi tensor (same size as network output)
-def create_pi_vector(node: type[Node], tau: float):
+def create_pi_vector(node, tau: float):
     pi = [0 for _ in range(4672)]
     pi_denom = sum([child.n**(1/tau) for child in node.children.values()])
 
@@ -50,7 +41,7 @@ def create_pi_vector(node: type[Node], tau: float):
 
 # takes python-chess board and returns chosen move (in python-chess format)
 @torch.no_grad()
-def choose_move(node: type[Node], net: torch.nn.Module, recursion_count: int, verbose: bool = False):
+def choose_move(node, net: torch.nn.Module, recursion_count: int, verbose: bool = False):
     # prepare board for network inference
     start = time.time()
     # NOTE it is possible player=node.state.turn or something like that, im not sure
@@ -127,7 +118,7 @@ def is_game_over(board: chess.Board):
     return game_over
 
 # backup function for MCTS, loops until hitting the root node (which is the node without a parent)
-def backup(node: type[Node], v: int = 0):
+def backup(node, v: int = 0):
     node.n += 1
     node.w += v
     node.q = node.w/node.n
@@ -137,7 +128,7 @@ def backup(node: type[Node], v: int = 0):
     return backup(node=node.parent, v=v)
 
 @torch.no_grad()
-def expand(node: type[Node], recursion_count: int = 0, verbose: bool = False):
+def expand(node, recursion_count: int = 0, verbose: bool = False):
     expand_time = time.time()
     # if the game has gone on too long, it's a draw TODO delete this check?
     if recursion_count > 60:
@@ -231,61 +222,112 @@ def result_receiver(result_queue):
 # conduct Monte Carlo Tree Search for sims sims and the python-chess state
 # using network net and temperature tau
 def mcts(state: chess.Board, net: torch.nn.Module, tau: int, sims: int = 1, verbose: bool = False):
-    # state is a python-chess board    
-    root = Node(state=state)
-    # 
-    tot_start = time.time()
-    # number of processes
-    num_procs = 4
-    # number of sims per tree
-    by_tree_sims = sims // num_procs
+    class Node:
+        def __init__(
+                self, 
+                state: chess.Board, 
+                parent = None, 
+                action_from_parent: chess.Move = None
+            ):
+            self.state = state # python-chess board object
+            self.parent = parent # parent node of Node, None if root Node
+            self.action_from_parent = action_from_parent # chess.Move for action taken to arrive at Node, None for root
+            self.children = {} # dictionary of {chess.Move: child_Node}
+            self.n = 0 # number of times Node has been visited
+            self.w = 0 # total reward from this Node
+            self.q = 0 # mean reward from this Node
 
-    # multiprocessing queues for data collection and result distribution
-    queue = multiprocessing.Queue()
-    result_queue = multiprocessing.Queue()
+    BaseManager().register('Node', Node)
+    manager = BaseManager()
+    manager.start()
+    root = manager.Node(state=state)
 
-    # Start the data producers (multiple processes)
     processes = []
-    for i in range(4):  # 4 processes generating data
-        p = multiprocessing.Process(target=data_producer, args=(queue, i))
-        processes.append(p)
-        p.start()
+    for i in range(sims):
+        process = multiprocessing.Process(target=expand, args=(root, 0))
+        processes.append(process)
+        process.start()
 
-    # Start the batch processing and result forwarding
-    batch_process = multiprocessing.Process(target=process_batch, args=(queue, result_queue))
-    batch_process.start()
-
-    # Start the result receiver (to handle responses)
-    result_process = multiprocessing.Process(target=result_receiver, args=(result_queue,))
-    result_process.start()
-
-    # Wait for processes to complete
-    for p in processes:
-        p.join()
-
-    # Let the batch process know that it's time to stop (this is just an example)
-    batch_process.join()
-
-    tot_start = time.time()
-    processes = []
-    for _ in range(num_procs):
-        # p = multiprocessing.Process(target=expand, args=[deepcopy(root), net])
-        p = multiprocessing.Process(target=helper, args=[(deepcopy(root), net, by_tree_sims)])
-        p.start()
-        processes.append(p)
-
+    # Wait for all processes to finish
     for process in processes:
         process.join()
 
-    if verbose: print(f'Total time for async {sims} sims: {time.time()-tot_start} s')
-    
-    # Turn data from tree into pi vector
-    pi = create_pi_vector(node=root, tau=tau)
+    # # Turn data from tree into pi vector
+    pi = create_pi_vector(node=root._getvalue(), tau=tau)
     # value is the mean value from the root
     value = root.q
     # get best value calculated from pi
     chosen_action = int(torch.argmax(pi))
     return pi, value, chosen_action
+
+    # with BaseManager() as manager:
+    #     manager.register('Node', Node)
+
+    #     root = manager.Node(state=state)
+
+
+    #     processes = []
+    #     for i in range(5):
+    #         process = multiprocessing.Process(target=add_item, args=(shared_object, i))
+    #         processes.append(process)
+    #         process.start()
+
+    #     # Wait for all processes to finish
+    #     for process in processes:
+    #         process.join()
+    # 
+    # tot_start = time.time()
+    # # number of processes
+    # num_procs = 4
+    # # number of sims per tree
+    # by_tree_sims = sims // num_procs
+
+    # # multiprocessing queues for data collection and result distribution
+    # queue = mp.Queue()
+    # result_queue = mp.Queue()
+
+    # # Start the data producers (multiple processes)
+    # processes = []
+    # for i in range(4):  # 4 processes generating data
+    #     p = mp.Process(target=data_producer, args=(queue, i))
+    #     processes.append(p)
+    #     p.start()
+
+    # # Start the batch processing and result forwarding
+    # batch_process = mp.Process(target=process_batch, args=(queue, result_queue))
+    # batch_process.start()
+
+    # # Start the result receiver (to handle responses)
+    # result_process = mp.Process(target=result_receiver, args=(result_queue,))
+    # result_process.start()
+
+    # # Wait for processes to complete
+    # for p in processes:
+    #     p.join()
+
+    # # Let the batch process know that it's time to stop (this is just an example)
+    # batch_process.join()
+
+    # tot_start = time.time()
+    # processes = []
+    # for _ in range(num_procs):
+    #     # p = mp.Process(target=expand, args=[deepcopy(root), net])
+    #     p = mp.Process(target=helper, args=[(deepcopy(root), net, by_tree_sims)])
+    #     p.start()
+    #     processes.append(p)
+
+    # for process in processes:
+    #     process.join()
+
+    # if verbose: print(f'Total time for async {sims} sims: {time.time()-tot_start} s')
+    
+    # # # Turn data from tree into pi vector
+    # pi = create_pi_vector(node=root, tau=tau)
+    # # value is the mean value from the root
+    # value = root.q
+    # # get best value calculated from pi
+    # chosen_action = int(torch.argmax(pi))
+    # return pi, value, chosen_action
 
 
 

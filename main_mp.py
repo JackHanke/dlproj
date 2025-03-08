@@ -1,6 +1,7 @@
 import torch
-import time
 import torch.multiprocessing as mp
+import time
+import os
 from copy import deepcopy
 
 from utils.training import train_on_batch, Checkpoint
@@ -11,7 +12,6 @@ from utils.optimizer import get_optimizer
 from utils.evaluator import evaluator
 from utils.agent import Agent, Stockfish
 from utils.utils import Timer
-import os
 
 
 def training_loop(stop_event, memory, network, device, optimizer_params, counter):
@@ -58,7 +58,7 @@ def main():
     current_best_version = 0
     for i in range(2):
         print(">" * 50)
-        print(f'Dem0 Iteration {i+1}:\n')
+        print(f'dem0 Iteration {i+1}:\n')
         
         current_best_agent = Agent(version=current_best_version, network=current_best_network, sims=5)
         challenger_agent = Agent(version=current_best_version+1, network=challenger_network, sims=5)
@@ -110,7 +110,7 @@ def main():
 
         print("\nExternal evaluating...")
         stockfish = Stockfish(level=stockfish_level)
-        win_percent, lose_percent = evaluator(
+        win_percent, loss_percent = evaluator(
             challenger_agent=current_best_agent,
             current_best_agent=stockfish,
             max_moves=100,
