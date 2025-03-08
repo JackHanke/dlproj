@@ -3,7 +3,7 @@ from utils.networks import DemoNet
 import torch
 import time
 from utils.mcts import mcts
-from utils.mcts_parallel import mcts
+from utils.mcts_mp import mcts
 # from utils.vanillamcts import vanilla_mcts
 from utils.utils import prepare_state_for_net, get_net_best_legal
 from utils.chess_utils_local import action_to_move
