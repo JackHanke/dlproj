@@ -11,6 +11,7 @@
         - Everything
     3. Optimizer
         - Everything
+    - Stockfish 5 was released on 2014-05-31
 - Presentation
     - Make presentation
 - For Fun

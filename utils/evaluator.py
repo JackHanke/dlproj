@@ -4,13 +4,13 @@ from copy import deepcopy
 from tqdm import tqdm
 
 def evaluator(
-    challenger_agent: Agent, 
-    current_best_agent: Agent, 
-    max_moves: int,
-    num_games: int,
-    v_resign: float, 
-    verbose=False
-) -> Agent:
+        challenger_agent: Agent, 
+        current_best_agent: Agent, 
+        max_moves: int,
+        num_games: int,
+        v_resign: float, 
+        verbose=False
+    ) -> Agent:
     env = chess_v6.env()
     player_to_int = {"player_0": 1, "player_1": -1}
 
@@ -109,4 +109,9 @@ def evaluator(
     if verbose:
         print(f'Challenger Agent points: {challenger_agent_wins}, Current Best Agent points: {current_best_agent_wins}')
 
+    # if external evaluation, return number of games challenger agent won
+    if current_best_agent.version == 'Stockfish':
+        return (challenger_agent_wins/num_games), (current_best_agent_wins/num_games)
+    # else return best agent
     return challenger_agent if challenger_agent_wins >= current_best_agent_wins else current_best_agent
+

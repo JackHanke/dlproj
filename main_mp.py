@@ -9,7 +9,7 @@ from utils.memory import ReplayMemory
 from utils.networks import DemoNet
 from utils.optimizer import get_optimizer  
 from utils.evaluator import evaluator
-from utils.agent import Agent
+from utils.agent import Agent, Stockfish
 from utils.utils import Timer
 import os
 
@@ -54,6 +54,7 @@ def main():
     weights_path = os.path.join(base_path, "weights.pth")
     info_path = os.path.join(base_path, "info.json")
 
+    stockfish_level = 0
     current_best_version = 0
     for i in range(2):
         print(">" * 50)
@@ -84,7 +85,7 @@ def main():
             network=current_best_network,
             n_sims=2,
             num_games=2,
-            max_moves=500
+            max_moves=100
         )
         
         stop_event.set()
@@ -96,7 +97,7 @@ def main():
         current_best_agent = evaluator(
             challenger_agent=challenger_agent, 
             current_best_agent=current_best_agent, 
-            max_moves=500,
+            max_moves=100,
             num_games=3, 
             v_resign=self_play_session.v_resign, 
             verbose=True
@@ -107,8 +108,28 @@ def main():
         challenger_network = current_best_agent.network
         current_best_version = current_best_agent.version
 
+        print("\nExternal evaluating...")
+        stockfish = Stockfish(level=stockfish_level)
+        win_percent, lose_percent = evaluator(
+            challenger_agent=current_best_agent,
+            current_best_agent=stockfish,
+            max_moves=100,
+            num_games=3,
+            v_resign=self_play_session.v_resign, 
+            verbose=False
+        )
+        print(f'Played {3} games against Stockfish 5 Level {stockfish_level}, won {win_percent} games, lost {loss_percent} games.')
+
+        if win_percent > 0.55:
+            # update stockfish to higher level
+            stockfish_level += 1
+            stockfish.engine.configure({"Skill Level": stockfish_level})
+            print(f'Upgrading Stockfish level!')
+
         # step checkpoint
         checkpoint.step(weights_path=weights_path, info_path=info_path, current_best_agent=deepcopy(current_best_agent))
+    
+    stockfish.engine.close()
 
 if __name__ == "__main__":
     with Timer():

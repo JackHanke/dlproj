@@ -1,12 +1,13 @@
 
 import chess
 import chess.engine
+from sys import platform
 
+if platform == 'darwin': stock_path = f'./stockfish-5-mac/Mac/stockfish-5-64'
+elif platform == 'linux': stock_path = f'./stockfish-5-mac/src/stockfish' 
 
-# 
-stock_path = f'/Users/jack/vault/gradschool/dl/dlproj/stockfish-5-mac/Mac/stockfish-5-64'
 engine = chess.engine.SimpleEngine.popen_uci(stock_path)
-skill_level = 1 # TODO ELO: ~1000-2000
+skill_level = 0 # TODO ELO: ~1000-2000
 engine.configure({"Skill Level": skill_level})
 
 
@@ -19,5 +20,5 @@ board.push(result)
 
 print(board)
 
-input()
+# input()
 engine.quit()
