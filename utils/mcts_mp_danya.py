@@ -86,42 +86,40 @@ def simulate(root: Node, net: torch.nn.Module, verbose: bool = False):
         if len(legal_moves_list) > len(node.children):
             # Stop at the first unexpanded move.
             break
+        # otherwise we have expanded at this node
         else:
             # Node is fully expanded: select the child that maximizes Q + U.
-            total_n = sum(child.n for child in node.children.values())
+            # total_n = sum(child.n for child in node.children.values())
+            total_n = node.n
             best_score = -float('inf')
             selected_move = None
             c_puct = 1  # exploration constant
             for move in legal_moves_list:
-                if move in node.children:
-                    child = node.children[move]
-                    with child.lock:
-                        q = child.q
-                        n_val = child.n
-                    # Use the stored prior probability.
-                    p = child.p
-                    u = c_puct * np.sqrt(total_n) * p / (1 + n_val)
-                    score = q + u
-                else:
-                    # Should not happen if node is fully expanded.
-                    score = 1e6
+                child = node.children[move]
+                with child.lock:
+                    q = child.q
+                    n_val = child.n
+                    p = child.p     
+                u = c_puct * np.sqrt(total_n) * p / (1 + n_val)
+                score = q + u
                 if score > best_score:
                     best_score = score
                     selected_move = move
 
-            path.append((node, selected_move))
+            path.append((node, selected_move)) # TODO fix this
             # Apply virtual loss for parallelism.
-            with node.lock:
-                if selected_move not in node.children:
-                    next_state = deepcopy(node.state)
-                    next_state.push(selected_move)
-                    new_node = Node(state=next_state, parent=node, action_from_parent=selected_move, prior=0)
-                    node.children[selected_move] = new_node
+            # with node.lock:
+            #     if selected_move not in node.children:
+            #         print('this happens at least once !!!!!!!!!!!!!')
+            #         next_state = deepcopy(node.state)
+            #         next_state.push(selected_move)
+            #         new_node = Node(state=next_state, parent=node, action_from_parent=selected_move, prior=0)
+            #         node.children[selected_move] = new_node
             child = node.children[selected_move]
             with child.lock:
                 child.n += VIRTUAL_LOSS
-                child.w -= VIRTUAL_LOSS
-                child.q = child.w / child.n if child.n != 0 else 0
+                child.w -= VIRTUAL_LOSS # NOTE wtf
+                child.q = child.w / child.n if child.n != 0 else 0 # NOTE hehehehehehe
             node = child
 
     # --------------------------
@@ -131,17 +129,21 @@ def simulate(root: Node, net: torch.nn.Module, verbose: bool = False):
         v = result_to_int(node.state.result(claim_draw=True))
     else:
         # Prepare state tensor for network evaluation.
+
+        # TODO not even kidding, we need to track board history in the state tensor
         state_tensor = get_observation(orig_board=node.state, player=0)
         board_history = np.zeros((8, 8, 104), dtype=bool)
         state_tensor = np.dstack((state_tensor[:, :, :7], board_history))
         state_tensor = prepare_state_for_net(state=state_tensor.copy())
-        net.eval()
+        
         with torch.no_grad():
-            policy, v = net.forward(state_tensor)
+            policy, _ = net.forward(state_tensor)
         action_mask = torch.tensor(get_action_mask(orig_board=node.state))
+
         # Compute a vector of legal-move probabilities.
         p_vec = filter_legal_moves_and_renomalize(policy_vec=policy, legal_moves=action_mask)
-        # (No Dirichlet noise here; it's already applied at the root.)
+
+        # NOTE this assumes that the order of node.state.legal_moves is the same as the outputted p_vec TODO CHECK
         legal_moves_list = list(node.state.legal_moves)
         for i, move in enumerate(legal_moves_list):
             with node.lock:
@@ -171,7 +173,7 @@ def simulate(root: Node, net: torch.nn.Module, verbose: bool = False):
 
 # Parallel MCTS: run multiple simulations concurrently.
 @torch.no_grad()
-def parallel_mcts(state: chess.Board, net: torch.nn.Module, tau: int, sims: int = 100, verbose: bool = False, num_threads: int = 4):
+def parallel_mcts(state: chess.Board, net: torch.nn.Module, tau: int, sims: int = 100, verbose: bool = False, num_threads: int = 4, device: torch.device = None):
     net.eval()
     root = Node(state=state)
     # Expand root to set its priors and inject Dirichlet noise exactly once.
@@ -179,8 +181,9 @@ def parallel_mcts(state: chess.Board, net: torch.nn.Module, tau: int, sims: int 
     board_history = np.zeros((8, 8, 104), dtype=bool)
     state_tensor = np.dstack((state_tensor[:, :, :7], board_history))
     state_tensor = prepare_state_for_net(state=state_tensor.copy())
-    with torch.no_grad():
-        policy, _ = net.forward(state_tensor)
+
+    # net.to(device)
+    policy, _ = net.forward(state_tensor)
     action_mask = torch.tensor(get_action_mask(orig_board=root.state))
     p_vec = filter_legal_moves_and_renomalize(policy_vec=policy, legal_moves=action_mask)
     # Inject Dirichlet noise at the root.
