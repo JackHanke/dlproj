@@ -1,17 +1,20 @@
-from pettingzoo.classic import chess_v6
-from utils.agent import Agent
 from copy import deepcopy
 from tqdm import tqdm
+import torch
+from utils.agent import Agent
+from pettingzoo.classic import chess_v6
 
 def evaluator(
         challenger_agent: Agent, 
         current_best_agent: Agent, 
+        device: torch.device,
         max_moves: int,
         num_games: int,
         v_resign: float, 
         verbose=False
     ) -> Agent:
-    env = chess_v6.env()
+    env = chess_v6.env(render_mode='human')  
+    # env = chess_v6.env()
     player_to_int = {"player_0": 1, "player_1": -1}
 
     challenger_agent_wins = 0
@@ -70,7 +73,7 @@ def evaluator(
 
             tau = 0  # No exploration during evaluation
             agent = player_to_agent[current_player]
-            selected_move, v = agent.inference(board_state=deepcopy(env.board), tau=tau)
+            selected_move, v = agent.inference(board_state=deepcopy(env.board), device=device, tau=tau)
 
             # Resignation logic
             if move_idx > 10 and v < v_resign:

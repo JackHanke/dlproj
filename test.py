@@ -3,7 +3,7 @@ from utils.networks import DemoNet
 import torch
 import time
 # from utils.mcts import mcts
-from utils.mcts_mp_danya import parallel_mcts
+# from utils.mcts_mp_danya import parallel_mcts
 from utils.mcts import mcts
 
 
@@ -73,11 +73,10 @@ def test(verbose=False):
     env = chess_v6.env(render_mode=None) # don't render the env NOTE
     env.reset(seed=42)
 
-    net = DemoNet(num_res_blocks=1)
-    net.share_memory()
-
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    net.to(device)
+    # device = torch.device('cpu')
+    net = DemoNet(num_res_blocks=1).to(device)
+    # net.share_memory()
 
     termination, truncation = False, False
     while not termination and not truncation:
@@ -85,15 +84,14 @@ def test(verbose=False):
         # get state information
         start = time.time()
         observation, reward, termination, truncation, info = env.last()
-        if verbose: print(f'Time to get environment information: {time.time()-start} s')
 
         if termination or truncation:
             action = None
         else:
             # format obervation for network
             start = time.time()
-            state_tensor = prepare_state_for_net(state=observation['observation'].copy())
-            if verbose: print(f'Time to format state tensor for network: {time.time()-start} s')
+            state_tensor = prepare_state_for_net(state=observation['observation'].copy()).to(device)
+            # if verbose: print(f'Time to format state tensor for network: {time.time()-start} s')
 
             # compute policy and value
             start = time.time()
@@ -104,23 +102,22 @@ def test(verbose=False):
 
             start = time.time()
             sims = 100
-            print("starting mcts non-parallel...")
             # with Timer():
-            pi, val, action = mcts(state=deepcopy(env.board), net=net, tau=1, sims=sims, num_threads=4, verbose=False)
-            print("Final policy vector (pi):", pi)
-            print("Estimated value:", val)
-            print("Chosen action index:", action)
+            pi, val, action = mcts(
+                state=deepcopy(env.board), 
+                net=net, 
+                tau=1, 
+                sims=sims, 
+                num_threads=1,
+                device=device, 
+                verbose=False
+            )
+            # print("Final policy vector (pi):", pi)
+            # print("Estimated value:", val)
+            # print("Chosen action index:", action)
             if verbose: print(f'MCTS with {sims} sims completes after {time.time()-start} s')
 
-            # print("starting mcts parallel...")
-            # with Timer():
-            #     pi, value, chosen_action = parallel_mcts(deepcopy(env.board), net, tau=1, sims=sims, verbose=False)
-
-            # print("Final policy vector (pi):", pi)
-            # print("Estimated value:", value)
-            # print("Chosen action index:", chosen_action)
-
-            input()
+            # input()
 
         # take action
         start = time.time()

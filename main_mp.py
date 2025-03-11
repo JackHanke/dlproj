@@ -44,12 +44,13 @@ def training_loop(stop_event, memory, network, device, optimizer_params, counter
 
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
     self_play_session = SelfPlaySession()
     memory = ReplayMemory(1000)
     checkpoint = Checkpoint(verbose=True, compute_elo=False)
     
-    current_best_network = DemoNet(num_res_blocks=1)
-    challenger_network = deepcopy(current_best_network)
+    current_best_network = DemoNet(num_res_blocks=1).to(device)
+    challenger_network = deepcopy(current_best_network).to(device)
     base_path = "checkpoints/best_model/"
     weights_path = os.path.join(base_path, "weights.pth")
     info_path = os.path.join(base_path, "info.json")
@@ -83,8 +84,9 @@ def main():
         self_play_session.run_self_play(
             training_data=memory,
             network=current_best_network,
-            n_sims=2,
-            num_games=2,
+            device=device,
+            n_sims=100,
+            num_games=1,
             max_moves=100
         )
         
@@ -96,16 +98,17 @@ def main():
         print("\nEvaluating...")
         current_best_agent = evaluator(
             challenger_agent=challenger_agent, 
-            current_best_agent=current_best_agent, 
+            current_best_agent=current_best_agent,
+            device=device,
             max_moves=100,
-            num_games=3, 
+            num_games=3,
             v_resign=self_play_session.v_resign, 
             verbose=True
         )
         print(f'After this loop, the best_agent is {current_best_agent.version}\n\n')
 
-        current_best_network = deepcopy(current_best_agent.network)
-        challenger_network = current_best_agent.network
+        current_best_network = deepcopy(current_best_agent.network).to(device)
+        challenger_network = current_best_agent.network.to(device)
         current_best_version = current_best_agent.version
 
         print("\nExternal evaluating...")
@@ -113,6 +116,7 @@ def main():
         win_percent, loss_percent = evaluator(
             challenger_agent=current_best_agent,
             current_best_agent=stockfish,
+            device=device,
             max_moves=100,
             num_games=3,
             v_resign=self_play_session.v_resign, 
