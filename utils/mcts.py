@@ -19,12 +19,10 @@ class Node:
             self, 
             state: chess.Board, 
             parent = None, 
-            action_from_parent: chess.Move = None,
             prior: float = 0.0
         ):
         self.state = state # python-chess board object
         self.parent = parent # parent node of Node, None if root Node
-        self.action_from_parent = action_from_parent # chess.Move for action taken to arrive at Node, None for root
         self.children = {} # dictionary of {chess.Move: child_Node}
         self.n = 0 # number of times Node has been visited
         self.w = 0 # total reward from this Node
@@ -81,7 +79,7 @@ def is_game_over(board: chess.Board):
     return game_over
 
 # backup function for MCTS, loops until hitting the root node (which is the node without a parent)
-def backup(node: Node, v: int = 0):
+def backup(node: Node, v: float = 0.0):
     with node.lock:
         node.n += 1
         node.w += v
@@ -102,7 +100,7 @@ def expand(node: Node, net: torch.nn.Module, recursion_count: int = 0, verbose: 
     # if the game has gone on too long, it's a draw TODO delete this check?
     elif recursion_count > 60:
         # backup the sim with draw scoring
-        return backup(node=node, v=0)
+        return backup(node=node, v=0.0)
 
     # if this is a new node, create all children with priors
     if len(node.children.keys()) == 0:
@@ -113,30 +111,36 @@ def expand(node: Node, net: torch.nn.Module, recursion_count: int = 0, verbose: 
         state_tensor = np.dstack((state_tensor[:, :, :7], board_history))
         state_tensor = prepare_state_for_net(state=state_tensor.copy())
         
-        policy, _ = net.forward(state_tensor)
+        policy, net_v = net.forward(state_tensor)
+        # TODO backup v
         action_mask = torch.tensor(get_action_mask(orig_board=node.state))
         p_vec = filter_legal_moves_and_renomalize(policy_vec=policy, legal_moves=action_mask)
 
         for i, move in enumerate(node.state.legal_moves):
             with node.lock:
-                if move not in node.children:
-                    next_state = deepcopy(node.state)
-                    next_state.push(move)
-                    # Set the prior for this move to the corresponding network output.
-                    new_node = Node(
-                        state=next_state, 
-                        parent=node, 
-                        action_from_parent=move, 
-                        prior=p_vec[i].item()
-                    )
-                    node.children[move.uci()] = new_node
+                # if move.uci() not in node.children:
+                next_state = deepcopy(node.state)
+                next_state.push(move)
+                # Set the prior for this move to the corresponding network output.
+                new_node = Node(
+                    state=next_state, 
+                    parent=node, 
+                    prior=p_vec[i].item()
+                )
+                node.children[move.uci()] = new_node
 
     # with priors (either already there or previously calculated!)
     best_score = -float('inf')
     selected_move = None
     c_puct = 1  # exploration constant
     for move in node.state.legal_moves:
-        child = node.children[move.uci()]
+        with node.lock:
+            child = node.children[move.uci()]
+        # try:
+        # except KeyError as e:
+        #     print(e)
+        #     print([key + ' ' +str(value.n) for key, value in node.children.items()])
+        #     input('>>>>>>>>>>>>>>>>>>')
         with child.lock:
             q = child.q
             n_val = child.n
@@ -185,7 +189,7 @@ def mcts(state: chess.Board, net: torch.nn.Module, tau: int, sims: int = 1, num_
         next_state = deepcopy(root.state)
         next_state.push(move)
         # Initialize child nodes with the noisy prior.
-        root.children[move.uci()] = Node(state=next_state, parent=root, action_from_parent=move, prior=p_vec[i].item())
+        root.children[move.uci()] = Node(state=next_state, parent=root, prior=p_vec[i].item())
 
     # white people be like "jee wiz"
     with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
