@@ -55,6 +55,7 @@ class SelfPlaySession:
         self,
         training_data: ReplayMemory,
         network: nn.Module,
+        device: torch.device,
         n_sims: int,
         num_games: int, 
         max_moves: int, 
@@ -70,7 +71,8 @@ class SelfPlaySession:
             max_moves (int): Maximum number of moves per game before termination.
         """
 
-        env = chess_v6.env()  
+        # env = chess_v6.env(render_mode='human')  
+        env = chess_v6.env(render_mode=None)  
         player_to_int = {
             "player_0": 1,
             "player_1": -1
@@ -115,7 +117,7 @@ class SelfPlaySession:
                 tau = 1.0 if move_idx < self.temperature_initial_moves else 0
 
                 # Run MCTS 
-                pi, v, selected_move = mcts(deepcopy(env.board), net=network, tau=tau, sims=n_sims)  # NOTE pi should already be a probability distribution
+                pi, v, selected_move = mcts(deepcopy(env.board), net=network, device=device, tau=tau, sims=n_sims)  # NOTE pi should already be a probability distribution
                 pi = pi.squeeze()
                 # Store state, policy, and value
                 game_states.append(torch.from_numpy(state.copy()))

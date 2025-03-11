@@ -13,8 +13,8 @@ class Agent:
         self.sims = sims
         self.node_cache = None
 
-    def inference(self, board_state: chess.Board, tau: float = 1):
-        _, value, action = mcts(state=board_state, net=self.network, tau=tau, sims=self.sims)
+    def inference(self, board_state: chess.Board, device: torch.device, tau: float = 1):
+        _, value, action = mcts(state=board_state, net=self.network, device=device, tau=tau, sims=self.sims)
         # TODO once this returns a node as well, we cache the tree with the agent
         return action, value
     
@@ -34,7 +34,7 @@ class Stockfish:
         self.engine = chess.engine.SimpleEngine.popen_uci(stock_path)
         self.engine.configure({"Skill Level": self.level})
 
-    def inference(self, board_state: chess.Board, tau: float = 1):
+    def inference(self, board_state: chess.Board, device: torch.device, tau: float = 1):
         uci_move = self.engine.play(board_state, chess.engine.Limit(time=1.0)).move
         # NOTE translate uci_move to PettingZoo action number
         for ind, move in enumerate(board_state.legal_moves):

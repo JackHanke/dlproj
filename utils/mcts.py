@@ -30,6 +30,7 @@ class Node:
         self.virtual_loss = 0 # virtual loss for node
         self.p = prior # prior from network
         self.lock = threading.Lock() # for thread safety - 1 trillion parameter thing
+        # self.lock = threading.RLock() # for thread safety - 1 trillion parameter thing
 
 # creates the final pi tensor (same size as network output)
 def create_pi_vector(node: Node, tau: float):
@@ -89,7 +90,8 @@ def backup(node: Node, v: float = 0.0):
         return backup(node=node.parent, v=v)
 
 @torch.no_grad()
-def expand(node: Node, net: torch.nn.Module, recursion_count: int = 0, verbose: bool = False):
+def expand(node: Node, net: torch.nn.Module, device: torch.device = None, recursion_count: int = 0, verbose: bool = False):
+    # print(recursion_count)
     # if the node is a game over state
     if is_game_over(board=node.state):
         # get the associated value of the state, ( 1, 0, -1 )
@@ -109,15 +111,15 @@ def expand(node: Node, net: torch.nn.Module, recursion_count: int = 0, verbose: 
         # TODO still gotta handle this lmao
         board_history = np.zeros((8, 8, 104), dtype=bool)
         state_tensor = np.dstack((state_tensor[:, :, :7], board_history))
-        state_tensor = prepare_state_for_net(state=state_tensor.copy())
+        state_tensor = prepare_state_for_net(state=state_tensor.copy()).to(device)
         
         policy, net_v = net.forward(state_tensor)
         # TODO backup v
         action_mask = torch.tensor(get_action_mask(orig_board=node.state))
         p_vec = filter_legal_moves_and_renomalize(policy_vec=policy, legal_moves=action_mask)
 
-        for i, move in enumerate(node.state.legal_moves):
-            with node.lock:
+        with node.lock:
+            for i, move in enumerate(node.state.legal_moves):
                 # if move.uci() not in node.children:
                 next_state = deepcopy(node.state)
                 next_state.push(move)
@@ -128,43 +130,50 @@ def expand(node: Node, net: torch.nn.Module, recursion_count: int = 0, verbose: 
                     prior=p_vec[i].item()
                 )
                 node.children[move.uci()] = new_node
+        # because we were doing things wrong
+        return backup(node=node, v=net_v)
 
     # with priors (either already there or previously calculated!)
     best_score = -float('inf')
     selected_move = None
     c_puct = 1  # exploration constant
+    n = node.n
     for move in node.state.legal_moves:
         with node.lock:
-            child = node.children[move.uci()]
-        # try:
-        # except KeyError as e:
-        #     print(e)
-        #     print([key + ' ' +str(value.n) for key, value in node.children.items()])
-        #     input('>>>>>>>>>>>>>>>>>>')
+            try:
+                child = node.children[move.uci()]
+            except KeyError as e:
+                print(e)
+                print(f'Board player: {nose.state.turn}')
+                print(f'legal moves: {[thing.uci() for thing in node.state.legal_moves]}')
+                print(f'children   : {[thing for thing in node.children]}')
+                input('wtf')
         with child.lock:
             q = child.q
             n_val = child.n
-            p = child.p     
-        u = c_puct * np.sqrt(node.n) * p / (1 + n_val)
-        score = q + u
-        if score > best_score:
-            best_score = score
-            selected_move = move
+            p = child.p
+    u = c_puct * np.sqrt(n) * p / (1 + n_val)
+    score = q + u
+    if score > best_score:
+        best_score = score
+        selected_move = move
 
-    next_node = node.children[selected_move.uci()]
+    with node.lock:
+        next_node = node.children[selected_move.uci()]
 
     # TODO virtual loss add stuff?
 
     return expand(
         node=next_node, 
         net=net, 
+        device=device,
         recursion_count=recursion_count+1, 
         verbose=verbose
     )
 
 # conduct Monte Carlo Tree Search for sims sims and the python-chess state
 # using network net and temperature tau
-def mcts(state: chess.Board, net: torch.nn.Module, tau: int, sims: int = 1, num_threads=4, verbose: bool = False):
+def mcts(state: chess.Board, net: torch.nn.Module, tau: int, sims: int = 1, num_threads=1, device: torch.device = None, verbose: bool = False):
     net.eval()
     # state is a python-chess board    
     root = Node(state=state)
@@ -172,7 +181,7 @@ def mcts(state: chess.Board, net: torch.nn.Module, tau: int, sims: int = 1, num_
     state_tensor = get_observation(orig_board=root.state, player=0)
     board_history = np.zeros((8, 8, 104), dtype=bool)
     state_tensor = np.dstack((state_tensor[:, :, :7], board_history))
-    state_tensor = prepare_state_for_net(state=state_tensor.copy())
+    state_tensor = prepare_state_for_net(state=state_tensor.copy()).to(device)
 
     policy, _ = net.forward(state_tensor)
     action_mask = torch.tensor(get_action_mask(orig_board=root.state))
@@ -182,7 +191,7 @@ def mcts(state: chess.Board, net: torch.nn.Module, tau: int, sims: int = 1, num_
     epsilon = 0.25
     alpha = 0.03
     num_legal = len(p_vec)
-    noise = torch.distributions.Dirichlet(torch.full((num_legal,), alpha)).sample().unsqueeze(1)
+    noise = torch.distributions.Dirichlet(torch.full((num_legal,), alpha)).sample().unsqueeze(1).to(device)
     p_vec = ((1 - epsilon) * p_vec) + (epsilon * noise)
     # NOTE THIS MAKES A SCARY ASSUMPTION MAKE SURE ITS RIGHT
     for i, move in enumerate(root.state.legal_moves):
@@ -193,7 +202,7 @@ def mcts(state: chess.Board, net: torch.nn.Module, tau: int, sims: int = 1, num_
 
     # white people be like "jee wiz"
     with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
-        futures = [executor.submit(expand, root, net, verbose) for _ in range(sims)]
+        futures = [executor.submit(expand, root, net, device, 0, verbose) for _ in range(sims)]
         _ = [f.result() for f in futures]
 
     # print([key + ' ' +str(value.n) for key, value in root.children.items()])
