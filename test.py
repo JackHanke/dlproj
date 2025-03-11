@@ -3,7 +3,10 @@ from utils.networks import DemoNet
 import torch
 import time
 # from utils.mcts import mcts
-from utils.mcts_mp_danya import mcts
+from utils.mcts_mp_danya import parallel_mcts
+from utils.mcts import mcts
+
+
 # from utils.vanillamcts import vanilla_mcts
 from utils.utils import prepare_state_for_net, get_net_best_legal
 from utils.chess_utils_local import action_to_move
@@ -19,18 +22,6 @@ from utils.utils import Timer
 
 
 # NOTE this file tests interaction with the PettingZoo Chess environment
-
-def test_mcts_parallel():
-    from utils.mcts_mp_danya import mcts
-    initial_state = chess.Board()
-    net = DemoNet(num_res_blocks=1)
-    net.share_memory()  # Share network parameters (if using them for inference)
-    tau = 1  # Temperature parameter
-    with Timer():
-        pi, value, chosen_action = mcts(initial_state, net, tau, total_sims=10, num_workers=5, verbose=True)
-    print("Final policy vector (pi):", pi)
-    print("Estimated value:", value)
-    print("Chosen action index:", chosen_action)
 
 
 def test_self_play():
@@ -78,7 +69,6 @@ def test_replay_memory():
 
 
 def test(verbose=False):
-    from utils.mcts import mcts
     # env = chess_v6.env(render_mode="human") # for debugging and human interaction NOTE
     env = chess_v6.env(render_mode=None) # don't render the env NOTE
     env.reset(seed=42)
@@ -111,14 +101,22 @@ def test(verbose=False):
 
             start = time.time()
             sims = 100
-            print("starting mcts...")
+            print("starting mcts non-parallel...")
             with Timer():
-                pi, val, action = mcts(state=deepcopy(env.board), net=net, tau=1, sims=10, verbose=False)
+                pi, val, action = mcts(state=deepcopy(env.board), net=net, tau=1, sims=sims, verbose=False)
+
+            print("Final policy vector (pi):", pi)
+            print("Estimated value:", val)
+            print("Chosen action index:", action)
+            if verbose: print(f'MCTS with {sims} sims completes after {time.time()-start} s')
+            print("starting mcts parallel...")
+            with Timer():
+                pi, value, chosen_action = parallel_mcts(deepcopy(env.board), net, tau=1, sims=sims, verbose=False)
+
             print("Final policy vector (pi):", pi)
             print("Estimated value:", value)
-            print("Chosen action index:", action)
+            print("Chosen action index:", chosen_action)
 
-            if verbose: print(f'MCTS with {sims} sims completes after {time.time()-start} s')
             input()
 
         # take action
