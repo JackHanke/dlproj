@@ -1,4 +1,5 @@
 import torch
+from torch.distributions import Categorical
 import time
 import chess
 import threading
@@ -52,7 +53,7 @@ def create_pi_vector(node: Node, tau: float):
             except KeyError:
                 pass
         pi[action] = 1
-        pi = torch.tensor(pi).unsqueeze(0)    
+        pi = torch.tensor(pi)
         return pi
 
     pi_denom = sum([child.n**(1/tau) for child in node.children.values()])
@@ -64,7 +65,7 @@ def create_pi_vector(node: Node, tau: float):
             pi[action] = val
         except KeyError:
             pi[action] = 0
-    pi = torch.tensor(pi).unsqueeze(0)
+    pi = torch.tensor(pi)
     return pi
 
 # compute if a board is in a terminal state (ripped from PettingZoo source)
@@ -136,7 +137,7 @@ def expand(node: Node, net: torch.nn.Module, device: torch.device = None, recurs
     # with priors (either already there or previously calculated!)
     best_score = -float('inf')
     selected_move = None
-    c_puct = 1  # exploration constant
+    c_puct = 3  # exploration constant
     n = node.n
     for move in node.state.legal_moves:
         with node.lock:
@@ -144,7 +145,7 @@ def expand(node: Node, net: torch.nn.Module, device: torch.device = None, recurs
                 child = node.children[move.uci()]
             except KeyError as e:
                 print(e)
-                print(f'Board player: {nose.state.turn}')
+                print(f'Board player: {node.state.turn}')
                 print(f'legal moves: {[thing.uci() for thing in node.state.legal_moves]}')
                 print(f'children   : {[thing for thing in node.children]}')
                 input('wtf')
@@ -157,6 +158,8 @@ def expand(node: Node, net: torch.nn.Module, device: torch.device = None, recurs
     if score > best_score:
         best_score = score
         selected_move = move
+    
+    # input(selected_move)
 
     with node.lock:
         next_node = node.children[selected_move.uci()]
@@ -201,18 +204,32 @@ def mcts(state: chess.Board, net: torch.nn.Module, tau: int, sims: int = 1, num_
         root.children[move.uci()] = Node(state=next_state, parent=root, prior=p_vec[i].item())
 
     # white people be like "jee wiz"
-    with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
-        futures = [executor.submit(expand, root, net, device, 0, verbose) for _ in range(sims)]
-        _ = [f.result() for f in futures]
+    # with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
+    #     futures = [executor.submit(expand, root, net, device, 0, verbose) for _ in range(sims)]
+    #     _ = [f.result() for f in futures]
 
-    # print([key + ' ' +str(value.n) for key, value in root.children.items()])
-    # input()
+    for _ in range(sims):
+        expand(root, net, device, 0, verbose)
+        print([key + ' ' +str(value.n) + ' ' +str(value.q) for key, value in root.children.items()])
+        # print(root.children['a2a4'].q)
 
     # Turn data from tree into pi vector TODO make this faster?
     pi = create_pi_vector(node=root, tau=tau)
     # value is the mean value from the root
     value = root.q
-    # get best value calculated from pi
-    chosen_action = int(torch.argmax(pi))
+
+
+    # chosen_action = int(torch.argmax(pi))
+    # chosen_action = np.random.choice([i for i in range(4672)], p=pi)
+    print([key + ' ' +str(value.n) for key, value in root.children.items()])
+    print([key + ' ' +str(round(value.p, 4)) for key, value in root.children.items()])
+
+    for val in pi:
+        if val != 0.0:
+            print(val)
+
+    # get best action sampled from pi
+    m = Categorical(pi)
+    chosen_action = int(m.sample().item())
     return pi, value, chosen_action
 

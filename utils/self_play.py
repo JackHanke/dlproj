@@ -71,8 +71,8 @@ class SelfPlaySession:
             max_moves (int): Maximum number of moves per game before termination.
         """
 
-        # env = chess_v6.env(render_mode='human')  
-        env = chess_v6.env(render_mode=None)  
+        env = chess_v6.env(render_mode='human')  
+        # env = chess_v6.env(render_mode=None)  
         player_to_int = {
             "player_0": 1,
             "player_1": -1

@@ -44,7 +44,7 @@ def training_loop(stop_event, memory, network, device, optimizer_params, counter
 
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    
+
     self_play_session = SelfPlaySession()
     memory = ReplayMemory(1000)
     checkpoint = Checkpoint(verbose=True, compute_elo=False)

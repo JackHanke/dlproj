@@ -21,7 +21,7 @@ def evaluator(
     current_best_agent_wins = 0
 
     win_threshold = 0.55
-    threshold_games = int(num_games * win_threshold)
+    threshold_games = round(num_games * win_threshold)
 
     # Use a tqdm progress bar for the games
     for game_idx in range(1, num_games+1):
