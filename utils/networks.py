@@ -87,3 +87,11 @@ class ResidualBlock(nn.Module):
         out = self.bn2(out)
         out += residual  # Skip connection
         return self.relu(out)
+
+
+if __name__ == '__main__':
+    num_res_blocks = 2
+    model = DemoNet(num_res_blocks=num_res_blocks)
+    total_params = sum(p.numel() for p in model.parameters())
+    print(f"Number of parameters for num_res_blocks = {num_res_blocks}: {total_params}")
+

@@ -76,6 +76,9 @@ def test(verbose=False):
     net = DemoNet(num_res_blocks=1)
     net.share_memory()
 
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    net.to(device)
+
     termination, truncation = False, False
     while not termination and not truncation:
         if verbose: print(env.board)
@@ -102,20 +105,20 @@ def test(verbose=False):
             start = time.time()
             sims = 100
             print("starting mcts non-parallel...")
-            with Timer():
-                pi, val, action = mcts(state=deepcopy(env.board), net=net, tau=1, sims=sims, verbose=False)
-
+            # with Timer():
+            pi, val, action = mcts(state=deepcopy(env.board), net=net, tau=1, sims=sims, num_threads=4, verbose=False)
             print("Final policy vector (pi):", pi)
             print("Estimated value:", val)
             print("Chosen action index:", action)
             if verbose: print(f'MCTS with {sims} sims completes after {time.time()-start} s')
-            print("starting mcts parallel...")
-            with Timer():
-                pi, value, chosen_action = parallel_mcts(deepcopy(env.board), net, tau=1, sims=sims, verbose=False)
 
-            print("Final policy vector (pi):", pi)
-            print("Estimated value:", value)
-            print("Chosen action index:", chosen_action)
+            # print("starting mcts parallel...")
+            # with Timer():
+            #     pi, value, chosen_action = parallel_mcts(deepcopy(env.board), net, tau=1, sims=sims, verbose=False)
+
+            # print("Final policy vector (pi):", pi)
+            # print("Estimated value:", value)
+            # print("Chosen action index:", chosen_action)
 
             input()
 
