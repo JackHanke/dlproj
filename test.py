@@ -114,10 +114,9 @@ def test(verbose=False):
             )
             # print("Final policy vector (pi):", pi)
             # print("Estimated value:", val)
-            # print("Chosen action index:", action)
+            print("Chosen action index:", action)
             if verbose: print(f'MCTS with {sims} sims completes after {time.time()-start} s')
-
-            # input()
+            input()
 
         # take action
         start = time.time()
