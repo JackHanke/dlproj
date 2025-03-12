@@ -56,6 +56,7 @@ def main():
     info_path = os.path.join(base_path, "info.json")
 
     stockfish_level = 0
+    stockfish_progress = {0:[]}
     current_best_version = 0
     for i in range(2):
         print(">" * 50)
@@ -130,13 +131,28 @@ def main():
             v_resign=self_play_session.v_resign, 
             verbose=False
         )
-        print(f'Played {3} games against Stockfish 5 Level {stockfish_level}, won {win_percent} games, lost {loss_percent} games.')
+        print(f'Against Stockfish 5 Level {stockfish_level}, won {win_percent} games, lost {loss_percent} games.')
+        # logging
+        stockfish_progress[stockfish_level].append(win_percent)
 
         if win_percent > 0.55:
             # update stockfish to higher level
             stockfish_level += 1
             stockfish.engine.configure({"Skill Level": stockfish_level})
             print(f'Upgrading Stockfish level!')
+
+            offset = 0
+            for level, progress in stockfish_progress.items():
+                plt.plot([i+offset for i in range(len(progress))], progress, label=f'Stockfish Level {level}')
+                offset += len(progress)
+
+            self_play_games = 10 # TODO change this to config var
+            plt.xlabel(f'Training Loops ({self_play_games} games per)')
+            plt.ylabel(f'Win Percentage')
+            plt.title('dem0 Training Against Stockfish Levels')
+            plt.show()
+
+
 
         # step checkpoint
         checkpoint.step(weights_path=weights_path, info_path=info_path, current_best_agent=deepcopy(current_best_agent))
