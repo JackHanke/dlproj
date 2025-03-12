@@ -1,13 +1,16 @@
 import numpy as np
-from pettingzoo.classic import chess_v6
-from utils.mcts import mcts  
-from utils.memory import ReplayMemory
 import torch
 import torch.nn as nn
 import random
+import logging
 from copy import deepcopy
 from tqdm import tqdm
+from pettingzoo.classic import chess_v6
 
+from utils.memory import ReplayMemory
+from utils.mcts import mcts  
+
+logger = logging.getLogger(__name__)
 
 class SelfPlaySession:
     def __init__(
@@ -40,11 +43,11 @@ class SelfPlaySession:
         if false_positive_rate > self.false_positive_threshold:
             # Reduce resignation frequency (raise v_resign, make it less aggressive)
             self.v_resign += 0.05  # Make resignations more cautious
-            print(f"Increasing v_resign to {self.v_resign} to reduce false resignations.")
+            logger.debug(f"Increasing v_resign to {self.v_resign} to reduce false resignations.")
         elif false_positive_rate < self.false_positive_threshold / 2:
             # Allow slightly more aggressive resignations
             self.v_resign -= 0.05  
-            print(f"Decreasing v_resign to {self.v_resign} to allow earlier resignations.")
+            logger.debug(f"Decreasing v_resign to {self.v_resign} to allow earlier resignations.")
 
         # Reset tracking counters for the next batch of games
         self.false_resignations = 0
@@ -83,8 +86,7 @@ class SelfPlaySession:
         }
 
         for game_idx in range(1, num_games+1):
-            print('*'*50)
-            print(f'Starting game #{game_idx}')
+            logger.debug(f'Starting game #{game_idx}')
             should_disable = False
             supposed_winner = None # For resgin false positive logic
             env.reset()
@@ -140,7 +142,7 @@ class SelfPlaySession:
                         if should_disable:
                             self.full_game_resignations += 1
                         else:
-                            print(f"Player {current_player} resigned at {move_idx}")
+                            logger.debug(f"Player {current_player} resigned at {move_idx}")
                             winning_player = supposed_winner
                             break
 
@@ -169,7 +171,7 @@ class SelfPlaySession:
 
                 training_data.push(state.float().permute(2, 0, 1), policy, torch.tensor([adjusted_reward], dtype=torch.float))  
 
-            print(f"Completed game {game_idx}/{num_games}")
+            logger.debug(f"Completed game {game_idx}/{num_games}")
 
         # Adjust resignation threshold after batch of games
         self.adjust_v_resign()
