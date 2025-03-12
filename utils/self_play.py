@@ -50,7 +50,6 @@ class SelfPlaySession:
         self.false_resignations = 0
         self.total_resigned_games = 0
 
-    # TODO, make epsilon and alpha input params into run self play
     def run_self_play(
         self,
         training_data: ReplayMemory,

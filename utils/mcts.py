@@ -98,8 +98,8 @@ def expand(
         net: torch.nn.Module, 
         device: torch.device = None, 
         recursion_count: int = 0, 
-        verbose: bool = False, 
-        return_node=False
+        verbose: bool = False,
+        c_puct: int = 3,
     ):
     # print(recursion_count)
     # if the node is a game over state
@@ -147,7 +147,6 @@ def expand(
     # with priors (either already there or previously calculated!)
     best_score = -float('inf')
     selected_move = None
-    c_puct = 3  # exploration constant
     n = node.n + 1e-6
     for move in node.state.legal_moves:
         with node.lock:
@@ -192,8 +191,9 @@ def mcts(
         observation: torch.tensor,
         net: torch.nn.Module, 
         tau: int, 
+        c_puct: int = 3,
         sims: int = 1, 
-        num_threads=1, 
+        num_threads: int = 1, 
         device: torch.device = None, 
         verbose: bool = False,
         inference_mode: bool = False
@@ -232,7 +232,7 @@ def mcts(
 
     # white people be like "jee wiz"
     with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
-        futures = [executor.submit(expand, root, net, device, 0, verbose) for _ in range(sims)]
+        futures = [executor.submit(expand, root, net, device, 0, verbose, c_puct) for _ in range(sims)]
         _ = [f.result() for f in futures]
 
     pi = create_pi_vector(node=root, tau=tau)

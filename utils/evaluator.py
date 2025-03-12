@@ -12,6 +12,7 @@ def evaluator(
         max_moves: int,
         num_games: int,
         v_resign: float, 
+        win_threshold: float = 0.55,
         verbose=False
     ) -> Agent:
     env = chess_v6.env(render_mode='human')  
@@ -21,7 +22,6 @@ def evaluator(
     challenger_agent_wins = 0
     current_best_agent_wins = 0
 
-    win_threshold = 0.55
     threshold_games = round(num_games * win_threshold)
 
     # Use a tqdm progress bar for the games

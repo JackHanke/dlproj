@@ -48,7 +48,6 @@ class TemperatureConfig:
 @dataclass
 class SelfPlayConfig:
     num_simulations: int
-    exploration_noise: ExplorationNoiseConfig
     temperature: TemperatureConfig
     resign_threshold: float
     disable_resignation_fraction: float
