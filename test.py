@@ -132,7 +132,7 @@ def test(verbose=False):
             time.sleep(10) # hang on final position for a bit
 
     env.close()
-    print(f'Average MCTS (sims: {sims} threads: {num_threads}) time: {mean(times)} s')
+    print(f'Average MCTS (sims: {sims} threads: {num_threads}) time: {sum(times)/len(times)} s')
 
 if __name__ == '__main__':
     # test(verbose=True)

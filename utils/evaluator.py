@@ -1,9 +1,12 @@
 import torch
 from tqdm import tqdm
 from copy import deepcopy
+import logging
 from pettingzoo.classic import chess_v6
 
 from utils.agent import Agent
+
+logger = logging.getLogger(__name__)
 
 def evaluator(
         challenger_agent: Agent, 
@@ -12,8 +15,7 @@ def evaluator(
         max_moves: int,
         num_games: int,
         v_resign: float, 
-        win_threshold: float = 0.55,
-        verbose=False
+        win_threshold: float = 0.55
     ) -> Agent:
     env = chess_v6.env(render_mode='human')  
     # env = chess_v6.env()
@@ -28,10 +30,8 @@ def evaluator(
     for game_idx in range(1, num_games+1):
         if challenger_agent_wins >= threshold_games or current_best_agent_wins >= threshold_games:
             break
-
-        if verbose:
-            print('*' * 50)
-            print(f'Starting game #{game_idx}')
+        
+        logger.debug(f'Starting game #{game_idx}')
         env.reset()
 
         # Assign agents based on game index (alternate colors)
@@ -61,15 +61,13 @@ def evaluator(
                 game_result = reward
                 last_player = player_to_int[current_player]
                 winning_player = game_result * last_player
-                if verbose:
-                    print(f"Game terminated for {current_player} at move {move_idx}. {winning_player} is the winner. Reward = {reward}, Last Player = {last_player}, is truncated: {truncation}")
+                logger.debug(f"Game terminated for {current_player} at move {move_idx}. {winning_player} is the winner. Reward = {reward}, Last Player = {last_player}, is truncated: {truncation}")
                 break
 
             if truncation:
                 winning_player = 0
                 last_player = player_to_int[current_player]
-                if verbose:
-                    print(f"Game truncated for {current_player} at move {move_idx}. {winning_player} is the winner. Reward = {reward}, Last Player = {last_player}")
+                logger.debug(f"Game truncated for {current_player} at move {move_idx}. {winning_player} is the winner. Reward = {reward}, Last Player = {last_player}")
                 break
 
             tau = 0  # No exploration during evaluation
@@ -79,8 +77,7 @@ def evaluator(
             # Resignation logic
             if move_idx > 10 and v < v_resign:
                 winning_player = -1 * player_to_int[current_player]
-                if verbose:
-                    print(f"Player {current_player} resigned at move {move_idx} with value {v:.3f}")
+                logger.debug(f"Player {current_player} resigned at move {move_idx} with value {v:.3f}")
                 break
 
             env.step(selected_move)
@@ -107,11 +104,9 @@ def evaluator(
                 challenger_agent_wins += 0.5
                 current_best_agent_wins += 0.5
 
-        if verbose:
-            print(f"Completed game {game_idx}/{num_games}")
+        logger.debug(f"Completed game {game_idx}/{num_games}")
 
-    if verbose:
-        print(f'Played {(game_idx + 1)} games. Challenger Agent points: {challenger_agent_wins}, Current Best Agent points: {current_best_agent_wins}')
+    logging.info(f'Played {(game_idx + 1)} games. Challenger Agent points: {challenger_agent_wins}, Current Best Agent points: {current_best_agent_wins}')
 
     # if external evaluation, return number of games challenger agent won
     if current_best_agent.version == 'Stockfish':

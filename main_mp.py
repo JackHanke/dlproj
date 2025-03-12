@@ -5,6 +5,7 @@ import os
 from copy import deepcopy
 import logging
 from datetime import datetime
+import matplotlib.pyplot as plt
 
 from utils.training import train_on_batch, Checkpoint
 from utils.self_play import SelfPlaySession
@@ -41,7 +42,7 @@ def training_loop(stop_event, memory, network, device, optimizer_params, counter
         i += 1
 
     counter.value = i  # Store the final value of i in the shared variable
-    print(f'Memory length after self play: {len(memory)}')
+    logging.debug(f'Memory length after self play: {len(memory)}')
 
 
 def main():
@@ -107,7 +108,7 @@ def main():
             network=current_best_network,
             device=device,
             n_sims=100,
-            num_games=10,
+            num_games=1,
             max_moves=100
         )
         
@@ -124,8 +125,7 @@ def main():
             device=device,
             max_moves=100,
             num_games=10,
-            v_resign=self_play_session.v_resign, 
-            verbose=True
+            v_resign=self_play_session.v_resign
         )
         # print(f'After this loop, the best_agent is {current_best_agent.version}\n\n')
         logger.debug(f'After this loop, the best_agent is {current_best_agent.version}')
@@ -142,8 +142,7 @@ def main():
             device=device,
             max_moves=100,
             num_games=10,
-            v_resign=self_play_session.v_resign, 
-            verbose=False
+            v_resign=self_play_session.v_resign
         )
         # print(f'Against Stockfish 5 Level {stockfish_level}, won {win_percent} games, lost {loss_percent} games.')
         logger.debug(f'Against Stockfish 5 Level {stockfish_level}, won {win_percent} games, lost {loss_percent} games.')
