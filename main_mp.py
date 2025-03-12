@@ -61,8 +61,16 @@ def main():
         print(">" * 50)
         print(f'dem0 Iteration {i+1}:\n')
         
-        current_best_agent = Agent(version=current_best_version, network=current_best_network, sims=5)
-        challenger_agent = Agent(version=current_best_version+1, network=challenger_network, sims=5)
+        current_best_agent = Agent(
+            version=current_best_version, 
+            network=current_best_network, 
+            sims=100
+        )
+        challenger_agent = Agent(
+            version=current_best_version+1, 
+            network=challenger_network, 
+            sims=100
+        )
         
         optimizer_params = {
             "optimizer_name": "adam",

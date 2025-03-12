@@ -118,7 +118,14 @@ class SelfPlaySession:
                 tau = 1.0 if move_idx < self.temperature_initial_moves else 0
 
                 # Run MCTS 
-                pi, v, selected_move = mcts(deepcopy(env.board), net=network, device=device, tau=tau, sims=n_sims)  # NOTE pi should already be a probability distribution
+                pi, v, selected_move = mcts(
+                    state=deepcopy(env.board), 
+                    observation=state,
+                    net=network, 
+                    device=device, 
+                    tau=tau, 
+                    sims=n_sims
+                )  # NOTE pi should already be a probability distribution
                 pi = pi.squeeze()
                 # Store state, policy, and value
                 game_states.append(torch.from_numpy(state.copy()))
