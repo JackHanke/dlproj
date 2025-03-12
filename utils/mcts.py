@@ -91,7 +91,7 @@ def backup(node: Node, v: float = 0.0):
         return backup(node=node.parent, v=v)
 
 @torch.no_grad()
-def expand(node: Node, net: torch.nn.Module, device: torch.device = None, recursion_count: int = 0, verbose: bool = False):
+def expand(node: Node, net: torch.nn.Module, device: torch.device = None, recursion_count: int = 0, verbose: bool = False, return_node=False):
     # print(recursion_count)
     # if the node is a game over state
     if is_game_over(board=node.state):
@@ -153,13 +153,13 @@ def expand(node: Node, net: torch.nn.Module, device: torch.device = None, recurs
             q = child.q
             n_val = child.n
             p = child.p
-    u = c_puct * np.sqrt(n) * p / (1 + n_val)
-    score = q + u
-    if score > best_score:
-        best_score = score
-        selected_move = move
+        u = c_puct * np.sqrt(n) * p / (1 + n_val)
+        score = q + u
+        if score > best_score:
+            best_score = score
+            selected_move = move
     
-    # input(selected_move)
+    # input(f'selected move: {selected_move} had u val: {u}')
 
     with node.lock:
         next_node = node.children[selected_move.uci()]
@@ -176,10 +176,21 @@ def expand(node: Node, net: torch.nn.Module, device: torch.device = None, recurs
 
 # conduct Monte Carlo Tree Search for sims sims and the python-chess state
 # using network net and temperature tau
-def mcts(state: chess.Board, net: torch.nn.Module, tau: int, sims: int = 1, num_threads=1, device: torch.device = None, verbose: bool = False):
+@torch.no_grad()
+def mcts(
+        state: chess.Board, 
+        net: torch.nn.Module, 
+        tau: int, 
+        sims: int = 1, 
+        num_threads=1, 
+        device: torch.device = None, 
+        verbose: bool = False
+    ):
+    
     net.eval()
-    # state is a python-chess board    
     root = Node(state=state)
+    root.n += 1
+    
     # prep board NOTE this is wrong and needs the board history. maybe get observation?
     state_tensor = get_observation(orig_board=root.state, player=0)
     board_history = np.zeros((8, 8, 104), dtype=bool)
@@ -204,29 +215,19 @@ def mcts(state: chess.Board, net: torch.nn.Module, tau: int, sims: int = 1, num_
         root.children[move.uci()] = Node(state=next_state, parent=root, prior=p_vec[i].item())
 
     # white people be like "jee wiz"
-    # with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
-    #     futures = [executor.submit(expand, root, net, device, 0, verbose) for _ in range(sims)]
-    #     _ = [f.result() for f in futures]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
+        futures = [executor.submit(expand, root, net, device, 0, verbose) for _ in range(sims)]
+        _ = [f.result() for f in futures]
 
-    for _ in range(sims):
-        expand(root, net, device, 0, verbose)
-        print([key + ' ' +str(value.n) + ' ' +str(value.q) for key, value in root.children.items()])
-        # print(root.children['a2a4'].q)
+    # for _ in range(sims):
+    #     expand(root, net, device, 0, verbose)
+    #     print([key + ' ' +str(value.n) + ' ' +str(value.q) + ' ' +str(value.p) for key, value in root.children.items()])
+    #     print(root.children['a2a4'].q)
 
     # Turn data from tree into pi vector TODO make this faster?
     pi = create_pi_vector(node=root, tau=tau)
     # value is the mean value from the root
     value = root.q
-
-
-    # chosen_action = int(torch.argmax(pi))
-    # chosen_action = np.random.choice([i for i in range(4672)], p=pi)
-    print([key + ' ' +str(value.n) for key, value in root.children.items()])
-    print([key + ' ' +str(round(value.p, 4)) for key, value in root.children.items()])
-
-    for val in pi:
-        if val != 0.0:
-            print(val)
 
     # get best action sampled from pi
     m = Categorical(pi)
