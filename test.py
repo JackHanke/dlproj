@@ -69,8 +69,8 @@ def test_replay_memory():
 
 
 def test(verbose=False):
-    # env = chess_v6.env(render_mode="human") # for debugging and human interaction NOTE
-    env = chess_v6.env(render_mode=None) # don't render the env NOTE
+    env = chess_v6.env(render_mode="human") # for debugging and human interaction NOTE
+    # env = chess_v6.env(render_mode=None) # don't render the env NOTE
     env.reset(seed=42)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -106,6 +106,7 @@ def test(verbose=False):
             # with Timer():
             pi, val, action = mcts(
                 state=deepcopy(env.board), 
+                observation=observation['observation'],
                 net=net, 
                 tau=1, 
                 sims=sims, 
@@ -131,16 +132,40 @@ def test(verbose=False):
             time.sleep(10) # hang on final position for a bit
 
     env.close()
-    print(f'Average MCTS (sims: {sims} threads: {num_threads}) time: {np.mean(np.array(times))} s')
+    print(f'Average MCTS (sims: {sims} threads: {num_threads}) time: {mean(times)} s')
 
 if __name__ == '__main__':
+    # test(verbose=True)
     # test_mcts_parallel()
-    test(verbose=True)
     # agent_1 = Agent(version=1, network=DemoNet(num_res_blocks=1))
     # agent_2 = Agent(version=2, network=DemoNet(num_res_blocks=1))
 
     # winner_agent = evaluator(challenger_agent=agent_1, current_best_agent=agent_2)
     # print(f'Winner agent is Agent {winner_agent.version}')
 
+    # from utils.evaluator import evaluator
 
+    current_best_version = 0
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    current_best_network = DemoNet(num_res_blocks=1).to(device)
+    challenger_network = deepcopy(current_best_network).to(device)
+    current_best_agent = Agent(
+        version=current_best_version, 
+        network=current_best_network, 
+        sims=5
+    )
+    challenger_agent = Agent(
+        version=current_best_version+1, 
+        network=challenger_network, 
+        sims=5
+    )
 
+    current_best_agent = evaluator(
+        challenger_agent=challenger_agent, 
+        current_best_agent=current_best_agent,
+        device=device,
+        max_moves=100,
+        num_games=3,
+        v_resign=-0.95, 
+        verbose=True
+    )    

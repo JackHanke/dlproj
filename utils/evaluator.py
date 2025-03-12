@@ -1,8 +1,9 @@
-from copy import deepcopy
-from tqdm import tqdm
 import torch
-from utils.agent import Agent
+from tqdm import tqdm
+from copy import deepcopy
 from pettingzoo.classic import chess_v6
+
+from utils.agent import Agent
 
 def evaluator(
         challenger_agent: Agent, 
@@ -73,7 +74,7 @@ def evaluator(
 
             tau = 0  # No exploration during evaluation
             agent = player_to_agent[current_player]
-            selected_move, v = agent.inference(board_state=deepcopy(env.board), device=device, tau=tau)
+            selected_move, v = agent.inference(board_state=deepcopy(env.board), observation=observation['observation'], device=device, tau=tau)
 
             # Resignation logic
             if move_idx > 10 and v < v_resign:

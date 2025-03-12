@@ -13,9 +13,10 @@ class Agent:
         self.sims = sims
         self.node_cache = None
 
-    def inference(self, board_state: chess.Board, device: torch.device, tau: float = 0) -> tuple[int, float]:
+    def inference(self, board_state: chess.Board, observation: torch.tensor, device: torch.device, tau: float = 0) -> tuple[int, float]:
         _, value, action = mcts(
             state=board_state, 
+            observation=observation,
             net=self.network, 
             device=device, 
             tau=tau, 
@@ -43,7 +44,7 @@ class Stockfish:
         self.engine = chess.engine.SimpleEngine.popen_uci(stock_path)
         self.engine.configure({"Skill Level": self.level})
 
-    def inference(self, board_state: chess.Board, device: torch.device, tau: float = 1):
+    def inference(self, board_state: chess.Board, observation: torch.tensor, device: torch.device, tau: float = 1):
         uci_move = self.engine.play(board_state, chess.engine.Limit(time=1.0)).move
         # NOTE translate uci_move to PettingZoo action number
         for ind, move in enumerate(board_state.legal_moves):

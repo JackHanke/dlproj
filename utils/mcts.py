@@ -19,10 +19,12 @@ class Node:
     def __init__(
             self, 
             state: chess.Board, 
+            observation_tensor: torch.tensor,
             parent = None, 
             prior: float = 0.0
         ):
         self.state = state # python-chess board object
+        self.observation_tensor = observation_tensor # PettingZoo friendly representation, tracked for board history
         self.parent = parent # parent node of Node, None if root Node
         self.children = {} # dictionary of {chess.Move: child_Node}
         self.n = 0 # number of times Node has been visited
@@ -86,12 +88,19 @@ def backup(node: Node, v: float = 0.0):
         node.n += 1
         node.w += v
         node.q = node.w/node.n
-        # NOTE TODO vitual loss remove step?
+        # TODO vitual loss remove step?
         if node.parent is None: return
         return backup(node=node.parent, v=v)
 
 @torch.no_grad()
-def expand(node: Node, net: torch.nn.Module, device: torch.device = None, recursion_count: int = 0, verbose: bool = False, return_node=False):
+def expand(
+        node: Node, 
+        net: torch.nn.Module, 
+        device: torch.device = None, 
+        recursion_count: int = 0, 
+        verbose: bool = False, 
+        return_node=False
+    ):
     # print(recursion_count)
     # if the node is a game over state
     if is_game_over(board=node.state):
@@ -108,11 +117,11 @@ def expand(node: Node, net: torch.nn.Module, device: torch.device = None, recurs
     # if this is a new node, create all children with priors
     if len(node.children.keys()) == 0:
         # TODO do I need a lock to get the state?
-        state_tensor = get_observation(orig_board=node.state, player=0)
-        # TODO still gotta handle this lmao
-        board_history = np.zeros((8, 8, 104), dtype=bool)
-        state_tensor = np.dstack((state_tensor[:, :, :7], board_history))
-        state_tensor = prepare_state_for_net(state=state_tensor.copy()).to(device)
+        next_board = get_observation(orig_board=node.state, player=0)
+
+        # create observation tensor with proper board history
+        new_observation = np.dstack((next_board[:, :, 7:], node.observation_tensor[:, :, :-13]))
+        state_tensor = prepare_state_for_net(state=new_observation.copy()).to(device)
         
         policy, net_v = net.forward(state_tensor)
         # TODO backup v
@@ -126,7 +135,8 @@ def expand(node: Node, net: torch.nn.Module, device: torch.device = None, recurs
                 next_state.push(move)
                 # Set the prior for this move to the corresponding network output.
                 new_node = Node(
-                    state=next_state, 
+                    state=next_state,
+                    observation_tensor=new_observation,
                     parent=node, 
                     prior=p_vec[i].item()
                 )
@@ -138,7 +148,7 @@ def expand(node: Node, net: torch.nn.Module, device: torch.device = None, recurs
     best_score = -float('inf')
     selected_move = None
     c_puct = 3  # exploration constant
-    n = node.n
+    n = node.n + 1e-6
     for move in node.state.legal_moves:
         with node.lock:
             try:
@@ -179,6 +189,7 @@ def expand(node: Node, net: torch.nn.Module, device: torch.device = None, recurs
 @torch.no_grad()
 def mcts(
         state: chess.Board, 
+        observation: torch.tensor,
         net: torch.nn.Module, 
         tau: int, 
         sims: int = 1, 
@@ -189,14 +200,13 @@ def mcts(
     ):
     
     net.eval()
-    root = Node(state=state)
+    root = Node(
+        state=state,
+        observation_tensor=observation
+        )
     root.n += 1
-    
-    # prep board NOTE this is wrong and needs the board history. maybe get observation?
-    state_tensor = get_observation(orig_board=root.state, player=0)
-    board_history = np.zeros((8, 8, 104), dtype=bool)
-    state_tensor = np.dstack((state_tensor[:, :, :7], board_history))
-    state_tensor = prepare_state_for_net(state=state_tensor.copy()).to(device)
+
+    state_tensor = prepare_state_for_net(state=observation.copy()).to(device)
 
     policy, _ = net.forward(state_tensor)
     action_mask = torch.tensor(get_action_mask(orig_board=root.state))
@@ -213,19 +223,18 @@ def mcts(
         next_state = deepcopy(root.state)
         next_state.push(move)
         # Initialize child nodes with the noisy prior.
-        root.children[move.uci()] = Node(state=next_state, parent=root, prior=p_vec[i].item())
+        root.children[move.uci()] = Node(
+            state=next_state, 
+            observation_tensor=observation,
+            parent=root, 
+            prior=p_vec[i].item()
+        )
 
     # white people be like "jee wiz"
     with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
         futures = [executor.submit(expand, root, net, device, 0, verbose) for _ in range(sims)]
         _ = [f.result() for f in futures]
 
-    # for _ in range(sims):
-    #     expand(root, net, device, 0, verbose)
-    #     print([key + ' ' +str(value.n) + ' ' +str(value.q) + ' ' +str(value.p) for key, value in root.children.items()])
-    #     print(root.children['a2a4'].q)
-
-    # Turn data from tree into pi vector TODO make this faster?
     pi = create_pi_vector(node=root, tau=tau)
     # value is the mean value from the root
     value = root.q
