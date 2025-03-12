@@ -11,6 +11,7 @@ from typing import Union
 import json
 import os
 import torch.multiprocessing as mp
+from copy import deepcopy
 
 
 def train_on_batch(
@@ -73,6 +74,7 @@ class Checkpoint:
         self.verbose = verbose
         self.best_agent = None
         self.best_weights = None
+        self.best_model = None
         self.elo = None
         self.version = -1
         self.iteration = None
@@ -85,13 +87,24 @@ class Checkpoint:
         if self.verbose:
             print(f"Saved new best weights to {path}")
 
-    def step(self, weights_path: str, info_path: str, current_best_agent: Agent):
+    def save_model_obj(self, path: str) -> None:
+        assert path.split(".")[-1] == "pth", f"Must be in .pth format. Your current path is {path}."
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        torch.save(self.best_model, path)
+        if self.verbose:
+            print(f"Saved new best model to {path}")
+
+    def step(self, model_path: str, weights_path: str, info_path: str, current_best_agent: Agent):
         assert info_path.split(".")[-1] == 'json', "Info path must be in JSON format."
         if current_best_agent.version > self.version:
-            self.save_state_dict(path=weights_path)
+            self.best_model = deepcopy(current_best_agent.network)
             self.best_agent = current_best_agent
-            self.best_weights = current_best_agent.network.state_dict()
+            self.best_weights = self.best_model.state_dict()
             self.version = current_best_agent.version
+
+            # Cache the stuff
+            self.save_model_obj(path=model_path)
+            self.save_state_dict(path=weights_path)
 
             if self.compute_elo:
                 if self.verbose:
