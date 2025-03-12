@@ -3,6 +3,8 @@ import torch.multiprocessing as mp
 import time
 import os
 from copy import deepcopy
+import logging
+from datetime import datetime
 
 from utils.training import train_on_batch, Checkpoint
 from utils.self_play import SelfPlaySession
@@ -43,6 +45,14 @@ def training_loop(stop_event, memory, network, device, optimizer_params, counter
 
 
 def main():
+    logger = logging.getLogger(__name__)
+
+    # formatter = logging.Formatter("")
+    logging.basicConfig(filename='dem0.log', level=logging.DEBUG, format='%(asctime)s::%(levelname)s:%(message)s')
+    
+    logging.info(f'\n\nRunning Experiment on {datetime.now()} with the following configs:')
+    # TODO add all configs to logging for this log
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     self_play_session = SelfPlaySession()
@@ -58,9 +68,11 @@ def main():
     stockfish_level = 0
     stockfish_progress = {0:[]}
     current_best_version = 0
-    for i in range(2):
-        print(">" * 50)
-        print(f'dem0 Iteration {i+1}:\n')
+    i = 0 # number of iterations performed
+    while True:
+        # print(">" * 50)
+        # print()
+        logger.debug(f'dem0 Iteration {i+1}:\n')
         
         current_best_agent = Agent(
             version=current_best_version, 
@@ -89,49 +101,53 @@ def main():
         )
         training_process.start()
         
-        print('Running self play...')
+        # print('Running self play...')
         self_play_session.run_self_play(
             training_data=memory,
             network=current_best_network,
             device=device,
             n_sims=100,
-            num_games=1,
+            num_games=10,
             max_moves=100
         )
         
         stop_event.set()
         training_process.join()
         
-        print(f"\nTraining iterations completed: {counter.value}")  # Print the value of i
+        # print(f"\nTraining iterations completed: {counter.value}")  # Print the value of i
+        logger.debug(f'Training iterations completed: {counter.value}')
 
-        print("\nEvaluating...")
+        # print("\nEvaluating...")
         current_best_agent = evaluator(
             challenger_agent=challenger_agent, 
             current_best_agent=current_best_agent,
             device=device,
             max_moves=100,
-            num_games=3,
+            num_games=10,
             v_resign=self_play_session.v_resign, 
             verbose=True
         )
-        print(f'After this loop, the best_agent is {current_best_agent.version}\n\n')
+        # print(f'After this loop, the best_agent is {current_best_agent.version}\n\n')
+        logger.debug(f'After this loop, the best_agent is {current_best_agent.version}')
 
         current_best_network = deepcopy(current_best_agent.network).to(device)
         challenger_network = current_best_agent.network.to(device)
         current_best_version = current_best_agent.version
 
-        print("\nExternal evaluating...")
+        # print("\nExternal evaluating...")
         stockfish = Stockfish(level=stockfish_level)
         win_percent, loss_percent = evaluator(
             challenger_agent=current_best_agent,
             current_best_agent=stockfish,
             device=device,
             max_moves=100,
-            num_games=3,
+            num_games=10,
             v_resign=self_play_session.v_resign, 
             verbose=False
         )
-        print(f'Against Stockfish 5 Level {stockfish_level}, won {win_percent} games, lost {loss_percent} games.')
+        # print(f'Against Stockfish 5 Level {stockfish_level}, won {win_percent} games, lost {loss_percent} games.')
+        logger.debug(f'Against Stockfish 5 Level {stockfish_level}, won {win_percent} games, lost {loss_percent} games.')
+        
         # logging
         stockfish_progress[stockfish_level].append(win_percent)
 
@@ -139,7 +155,8 @@ def main():
             # update stockfish to higher level
             stockfish_level += 1
             stockfish.engine.configure({"Skill Level": stockfish_level})
-            print(f'Upgrading Stockfish level!')
+            # print(f'! Upgrading Stockfish level to {stockfish_level}.')
+            logger.info(f'! Upgrading Stockfish level to {stockfish_level}.')
 
             offset = 0
             for level, progress in stockfish_progress.items():
@@ -151,8 +168,6 @@ def main():
             plt.ylabel(f'Win Percentage')
             plt.title('dem0 Training Against Stockfish Levels')
             plt.show()
-
-
 
         # step checkpoint
         checkpoint.step(weights_path=weights_path, info_path=info_path, current_best_agent=deepcopy(current_best_agent))
