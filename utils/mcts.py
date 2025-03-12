@@ -27,7 +27,7 @@ class Node:
         self.children = {} # dictionary of {chess.Move: child_Node}
         self.n = 0 # number of times Node has been visited
         self.w = 0 # total reward from this Node
-        self.q = 0 # mean reward from this Node
+        self.q = 0.0 # mean reward from this Node
         self.virtual_loss = 0 # virtual loss for node
         self.p = prior # prior from network
         self.lock = threading.Lock() # for thread safety - 1 trillion parameter thing
@@ -184,7 +184,8 @@ def mcts(
         sims: int = 1, 
         num_threads=1, 
         device: torch.device = None, 
-        verbose: bool = False
+        verbose: bool = False,
+        inference_mode: bool = False
     ):
     
     net.eval()
@@ -230,6 +231,9 @@ def mcts(
     value = root.q
 
     # get best action sampled from pi
+    if inference_mode:
+        return pi, value, int(pi.argmax(-1).item())
+    
     m = Categorical(pi)
     chosen_action = int(m.sample().item())
     return pi, value, chosen_action
