@@ -77,7 +77,7 @@ def test(verbose=False):
     # device = torch.device('cpu')
     net = DemoNet(num_res_blocks=1).to(device)
     # net.share_memory()
-
+    times = []
     termination, truncation = False, False
     while not termination and not truncation:
         if verbose: print(env.board)
@@ -102,21 +102,24 @@ def test(verbose=False):
 
             start = time.time()
             sims = 100
+            num_threads = 1
             # with Timer():
             pi, val, action = mcts(
                 state=deepcopy(env.board), 
                 net=net, 
                 tau=1, 
                 sims=sims, 
-                num_threads=1,
+                num_threads=num_threads,
                 device=device, 
                 verbose=False
             )
             # print("Final policy vector (pi):", pi)
             # print("Estimated value:", val)
             print("Chosen action index:", action)
-            if verbose: print(f'MCTS with {sims} sims completes after {time.time()-start} s')
-            input()
+            t = time.time()-start
+            if verbose: print(f'MCTS with {sims} sims completes after {t} s')
+            times.append(t)
+            # input()
 
         # take action
         start = time.time()
@@ -128,6 +131,7 @@ def test(verbose=False):
             time.sleep(10) # hang on final position for a bit
 
     env.close()
+    print(f'Average MCTS (sims: {sims} threads: {num_threads}) time: {mean(times)} s')
 
 if __name__ == '__main__':
     # test_mcts_parallel()

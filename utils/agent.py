@@ -14,7 +14,15 @@ class Agent:
         self.node_cache = None
 
     def inference(self, board_state: chess.Board, device: torch.device, tau: float = 1):
-        _, value, action = mcts(state=board_state, net=self.network, device=device, tau=tau, sims=self.sims)
+        _, value, action = mcts(
+            state=board_state, 
+            net=self.network, 
+            device=device, 
+            tau=tau, 
+            sims=self.sims, 
+        )
+            # given_node=self.node_cache
+        # self.node_cache = child_node
         # TODO once this returns a node as well, we cache the tree with the agent
         return action, value
     

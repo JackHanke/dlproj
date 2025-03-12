@@ -110,11 +110,11 @@ def evaluator(
             print(f"Completed game {game_idx}/{num_games}")
 
     if verbose:
-        print(f'Challenger Agent points: {challenger_agent_wins}, Current Best Agent points: {current_best_agent_wins}')
+        print(f'Played {(game_idx + 1)} games. Challenger Agent points: {challenger_agent_wins}, Current Best Agent points: {current_best_agent_wins}')
 
     # if external evaluation, return number of games challenger agent won
     if current_best_agent.version == 'Stockfish':
-        return (challenger_agent_wins/num_games), (current_best_agent_wins/num_games)
+        return (challenger_agent_wins/(game_idx + 1)), (current_best_agent_wins/(game_idx + 1))
     # else return best agent
     return challenger_agent if challenger_agent_wins >= current_best_agent_wins else current_best_agent
 
