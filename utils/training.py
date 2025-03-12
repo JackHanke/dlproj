@@ -18,7 +18,9 @@ def train_on_batch(
     network: DemoNet, 
     batch_size: int, 
     device: torch.device, 
-    optimizer: Union[optim.Adam, optim.SGD]
+    optimizer: Union[optim.Adam, optim.SGD],
+    policy_weight: float = 1.0,
+    value_weight: float = 1.0
 ):
     network.to(device)
     network.train()
@@ -34,7 +36,14 @@ def train_on_batch(
 
     # Forward pass
     policy_out, value_out = network(state_batch)
-    loss = combined_loss(pi=policy_batch, p_theta_logits=policy_out, z=reward_batch, v_theta=value_out)
+    loss = combined_loss(
+        pi=policy_batch, 
+        p_theta_logits=policy_out, 
+        z=reward_batch, 
+        v_theta=value_out, 
+        policy_weight=policy_weight, 
+        value_weight=value_weight
+    )
 
     # Backward pass
     loss.backward()

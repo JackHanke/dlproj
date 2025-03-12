@@ -20,9 +20,6 @@ network:
 
 self_play:
   num_simulations: 800
-  exploration_noise:
-    epsilon: 0.25
-    alpha: 0.03
   temperature:
     initial_moves: 30
   resign_threshold: -0.9
