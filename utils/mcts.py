@@ -3,11 +3,15 @@ from torch.distributions import Categorical
 import time
 import chess
 import threading
+import logging
 import numpy as np
 import concurrent.futures
 from copy import deepcopy
+
 from utils.chess_utils_local import get_observation, legal_moves, result_to_int, get_action_mask
 from utils.utils import prepare_state_for_net, filter_legal_moves, filter_legal_moves_and_renomalize, renormalize_network_output, rand_argmax
+
+logger = logging.getLogger(__name__)
 
 # NOTE this code refers to a chess.Move and a UCI string as a 'move'
 # while the action indexes provided by Pettingzoo as an 'action'
@@ -101,7 +105,6 @@ def expand(
         verbose: bool = False,
         c_puct: int = 3,
     ):
-    # print(recursion_count)
     # if the node is a game over state
     if is_game_over(board=node.state):
         # get the associated value of the state, ( 1, 0, -1 )
@@ -153,11 +156,11 @@ def expand(
             try:
                 child = node.children[move.uci()]
             except KeyError as e:
-                print(e)
-                print(f'Board player: {node.state.turn}')
-                print(f'legal moves: {[thing.uci() for thing in node.state.legal_moves]}')
-                print(f'children   : {[thing for thing in node.children]}')
-                input('wtf')
+                logging.error(e)
+                logging.error(f'Board player: {node.state.turn}')
+                logging.error(f'Legal moves : {[thing.uci() for thing in node.state.legal_moves]}')
+                logging.error(f'  Children  : {[thing for thing in node.children]}')
+                input('Illegal move entered. Possible race condition error.')
         with child.lock:
             q = child.q
             n_val = child.n
