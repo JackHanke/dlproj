@@ -235,12 +235,20 @@ def mcts(
         futures = [executor.submit(expand, root, net, device, 0, verbose, c_puct) for _ in range(sims)]
         _ = [f.result() for f in futures]
 
+    c_puct = 3
+    print([move + ' ' + str(round(child.q.item() + c_puct * np.sqrt(root.n + 1e-6) * child.p / (1 + child.n), 5)) for move, child in root.children.items()])
+    # input()
+
     pi = create_pi_vector(node=root, tau=tau)
     # value is the mean value from the root
     value = root.q
 
     # get best action sampled from pi
     if inference_mode:
+        for i in pi:
+            if i.item() > 0:
+                print(i.item(), end=', ')
+        input(f'\n`pi ^^')
         return pi, value, int(pi.argmax(-1).item())
     
     m = Categorical(pi)

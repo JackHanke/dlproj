@@ -148,16 +148,16 @@ if __name__ == '__main__':
     current_best_version = 0
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     current_best_network = DemoNet(num_res_blocks=1).to(device)
-    challenger_network = deepcopy(current_best_network).to(device)
+    challenger_network = DemoNet(num_res_blocks=2).to(device)
     current_best_agent = Agent(
         version=current_best_version, 
         network=current_best_network, 
-        sims=5
+        sims=100
     )
     challenger_agent = Agent(
         version=current_best_version+1, 
         network=challenger_network, 
-        sims=5
+        sims=100
     )
 
     current_best_agent = evaluator(
