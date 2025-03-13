@@ -11,7 +11,7 @@ from copy import deepcopy
 from utils.chess_utils_local import get_observation, legal_moves, result_to_int, get_action_mask
 from utils.utils import prepare_state_for_net, filter_legal_moves, filter_legal_moves_and_renomalize, renormalize_network_output, rand_argmax
 
-logger = logging.getLogger(__name__)
+# logger = logging.getLogger(__name__)
 
 # NOTE this code refers to a chess.Move and a UCI string as a 'move'
 # while the action indexes provided by Pettingzoo as an 'action'
@@ -194,7 +194,7 @@ def mcts(
         tau: int, 
         c_puct: int = 3,
         sims: int = 1, 
-        num_threads: int = 1, 
+        num_threads: int = 1,
         device: torch.device = None, 
         verbose: bool = False,
         inference_mode: bool = False

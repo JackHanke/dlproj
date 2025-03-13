@@ -17,11 +17,17 @@ def evaluator(
         v_resign: float, 
         win_threshold: float = 0.55
     ) -> Agent:
-    env = chess_v6.env(render_mode='human')  
+    # watch external evaluation
+    if current_best_agent.version == 'Stockfish':
+        env = chess_v6.env(render_mode='human')  
+    else:
+        env = chess_v6.env(render_mode=None)  
+
     # env = chess_v6.env()
     player_to_int = {"player_0": 1, "player_1": -1}
 
     challenger_agent_wins = 0
+    draws = 0
     current_best_agent_wins = 0
 
     threshold_games = round(num_games * win_threshold)
@@ -46,13 +52,16 @@ def evaluator(
                 "player_1": challenger_agent
             }
 
+        logger.debug(f'{player_to_agent["player_0"].version} vs. {player_to_agent["player_1"].version}')
+        # print(f'{player_to_agent["player_0"].version} vs. {player_to_agent["player_1"].version}')
+
         winning_player = None
 
         # Use a tqdm progress bar for moves within the game
-        move_bar = tqdm(range(1, max_moves + 1), desc=f"Game {game_idx} moves", leave=False)
+        move_bar = tqdm(range(1, max_moves + 1), desc=f"Game {game_idx} moves", leave=True)
         for move_idx in move_bar:
-            move_bar.set_description(f"Move {move_idx} - {env.agent_selection}")
             current_player = env.agent_selection
+            move_bar.set_description(f"Evaluator, Game {game_idx}: Move {move_idx} by Player {current_player}.")
             observation, reward, termination, truncation, info = env.last()
 
             # Check for game termination
@@ -93,24 +102,29 @@ def evaluator(
             elif winning_player == -1:
                 current_best_agent_wins += 1
             else:
-                challenger_agent_wins += 0.5
-                current_best_agent_wins += 0.5
+                draws += 1
         else:  # Challenger is black
             if winning_player == -1:
                 challenger_agent_wins += 1
             elif winning_player == 1:
                 current_best_agent_wins += 1
             else:
-                challenger_agent_wins += 0.5
-                current_best_agent_wins += 0.5
+                draws += 1
 
         logger.debug(f"Completed game {game_idx}/{num_games}")
 
-    logging.info(f'Played {(game_idx + 1)} games. Challenger Agent points: {challenger_agent_wins}, Current Best Agent points: {current_best_agent_wins}')
-
     # if external evaluation, return number of games challenger agent won
     if current_best_agent.version == 'Stockfish':
-        return (challenger_agent_wins/(game_idx + 1)), (current_best_agent_wins/(game_idx + 1))
+        return challenger_agent_wins, draws, current_best_agent_wins, game_idx
+
+    logging.debug(f'Played {(game_idx + 1)} games. Challenger Agent points: {challenger_agent_wins}, Current Best Agent points: {current_best_agent_wins}')
+
     # else return best agent
-    return challenger_agent if challenger_agent_wins >= current_best_agent_wins else current_best_agent
+    if challenger_agent_wins >= current_best_agent_wins:
+        logger.info(f'Challenger agent v{challenger_agent.version} wins!')
+        return_agent = challenger_agent  
+    else:
+        return_agent = current_best_agent
+
+    return return_agent, challenger_agent_wins, draws, current_best_agent_wins, game_idx
 

@@ -73,8 +73,8 @@ class SelfPlaySession:
             max_moves (int): Maximum number of moves per game before termination.
         """
 
-        env = chess_v6.env(render_mode='human')  
-        # env = chess_v6.env(render_mode=None)  
+        # env = chess_v6.env(render_mode='human')  
+        env = chess_v6.env(render_mode=None)  
 
         player_to_int = {
             "player_0": 1,
@@ -94,25 +94,25 @@ class SelfPlaySession:
             move_policies = []
             players = []
 
-            pbar = tqdm(range(1, max_moves+1))
-            for move_idx in pbar:
+            move_bar = tqdm(range(1, max_moves+1))
+            for move_idx in move_bar:
                 current_player = env.agent_selection
                 observation, reward, termination, truncation, info = env.last()
-                pbar.set_description(f"Running move {move_idx} for {current_player}")
+                move_bar.set_description(f"SelfPlay, Game {game_idx}: Move {move_idx} by Player {current_player}.")
 
                 # Check for game termination
                 if termination:
-                    game_result = reward 
+                    game_result = reward
                     last_player = player_to_int[current_player]
                     winning_player = game_result * last_player
-                    pbar.set_description(f"Game terminated for {current_player} at move {move_idx}. {winning_player} is the winner. Reward = {reward}, Last Player = {last_player}")
+                    move_bar.set_description(f"Game terminated for {current_player} at move {move_idx}. {winning_player} is the winner. Reward = {reward}, Last Player = {last_player}")
                     break
 
                 if truncation:
                     last_player = player_to_int[current_player]
                     game_result = 0  
                     winning_player = 0
-                    pbar.set_description(f"Game truncated for {current_player} at move {move_idx}. {winning_player} is the winner. Reward = {reward}, Last Player = {last_player}")
+                    move_bar.set_description(f"Game truncated for {current_player} at move {move_idx}. {winning_player} is the winner. Reward = {reward}, Last Player = {last_player}")
                     break
 
                 state = observation['observation']
@@ -152,7 +152,7 @@ class SelfPlaySession:
             else:
                 game_result = 0  # Draw by reaching max moves
                 winning_player = 0
-                pbar.set_description("Game is a draw due to reached max moves.")
+                move_bar.set_description("Game is a draw due to reached max moves.")
 
             # False resignation check
             if should_disable:

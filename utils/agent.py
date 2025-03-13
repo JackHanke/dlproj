@@ -3,8 +3,9 @@ import chess
 import chess.engine
 from utils.mcts import mcts
 # from utils.mcts_parallel import mcts
-from utils.chess_utils_local import get_action_mask, legal_moves
+from utils.chess_utils_local import get_action_mask, legal_moves, moves_to_actions
 from sys import platform
+import time
 
 class Agent:
     def __init__(self, version: int, network: torch.nn.Module, sims: int = 10):
@@ -45,14 +46,14 @@ class Stockfish:
         self.engine.configure({"Skill Level": self.level})
 
     def inference(self, board_state: chess.Board, observation: torch.tensor, device: torch.device, tau: float = 1):
-        uci_move = self.engine.play(board_state, chess.engine.Limit(time=1.0)).move
-        # NOTE translate uci_move to PettingZoo action number
-        for ind, move in enumerate(board_state.legal_moves):
-            if str(move.uci()) == str(uci_move):
-                i = ind
-                break
-        action = legal_moves(orig_board=board_state)[i]
-
+        # fuck you PettingZoo
+        if board_state.turn: # it white's turn
+            uci_move = str(self.engine.play(board_state, chess.engine.Limit(time=1.0)).move)
+        elif not board_state.turn: # if black's turn
+            mirrored_board = board_state.mirror()
+            uci_move = str(self.engine.play(mirrored_board, chess.engine.Limit(time=1.0)).move)
+        _ = legal_moves(orig_board=board_state) # idk if this is necessary
+        action = moves_to_actions[uci_move]
         value = 1 # NOTE compatability
         return action, value
 

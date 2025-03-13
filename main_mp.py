@@ -35,7 +35,7 @@ def training_loop(stop_event, memory, network, device, optimizer_params, counter
         train_on_batch(
             data=memory,
             network=network,
-            batch_size=1,
+            batch_size=32,
             device=device,
             optimizer=optimizer
         )
@@ -47,24 +47,23 @@ def training_loop(stop_event, memory, network, device, optimizer_params, counter
 
 def main():
     logger = logging.getLogger(__name__)
-
-    # formatter = logging.Formatter("")
-    logging.basicConfig(filename='dem0.log', level=logging.DEBUG, format='%(asctime)s::%(levelname)s:%(message)s')
-    
+    logging.basicConfig(filename='dem0.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     logging.info(f'\n\nRunning Experiment on {datetime.now()} with the following configs:')
     # TODO add all configs to logging for this log
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     self_play_session = SelfPlaySession()
-    memory = ReplayMemory(1000)
+    memory = ReplayMemory(10000)
     checkpoint = Checkpoint(verbose=True, compute_elo=False)
     
-    current_best_network = DemoNet(num_res_blocks=1).to(device)
+    current_best_network = DemoNet(num_res_blocks=5).to(device)
     challenger_network = deepcopy(current_best_network).to(device)
+
     base_path = "checkpoints/best_model/"
     weights_path = os.path.join(base_path, "weights.pth")
     info_path = os.path.join(base_path, "info.json")
+    model_path = os.path.join(base_path, "model.pth")
 
     stockfish_level = 0
     stockfish_progress = {0:[]}
@@ -73,17 +72,17 @@ def main():
     while True:
         # print(">" * 50)
         # print()
-        logger.debug(f'dem0 Iteration {i+1}:\n')
+        logger.info(f'Beginning dem0 Iteration {i+1}...\n')
         
         current_best_agent = Agent(
             version=current_best_version, 
             network=current_best_network, 
-            sims=100
+            sims=80
         )
         challenger_agent = Agent(
             version=current_best_version+1, 
             network=challenger_network, 
-            sims=100
+            sims=80
         )
         
         optimizer_params = {
@@ -107,9 +106,9 @@ def main():
             training_data=memory,
             network=current_best_network,
             device=device,
-            n_sims=100,
-            num_games=1,
-            max_moves=100
+            n_sims=80,
+            num_games=12,
+            max_moves=110
         )
         
         stop_event.set()
@@ -119,16 +118,17 @@ def main():
         logger.debug(f'Training iterations completed: {counter.value}')
 
         # print("\nEvaluating...")
-        current_best_agent = evaluator(
+        current_best_agent, wins, draws, losses, tot_games = evaluator(
             challenger_agent=challenger_agent, 
             current_best_agent=current_best_agent,
             device=device,
-            max_moves=100,
-            num_games=10,
+            max_moves=80,
+            num_games=7,
             v_resign=self_play_session.v_resign
         )
+        win_percent = wins/tot_games
         # print(f'After this loop, the best_agent is {current_best_agent.version}\n\n')
-        logger.debug(f'After this loop, the best_agent is {current_best_agent.version}')
+        logger.info(f'Agent {challenger_agent.version} playing Agent {current_best_agent.version}, won {wins} games, drew {draws} games, lost {losses} games. ({round(100*win_percent, 2)}% wins.)')
 
         current_best_network = deepcopy(current_best_agent.network).to(device)
         challenger_network = current_best_agent.network.to(device)
@@ -136,16 +136,17 @@ def main():
 
         # print("\nExternal evaluating...")
         stockfish = Stockfish(level=stockfish_level)
-        win_percent, loss_percent = evaluator(
+        wins, draws, losses, tot_games = evaluator(
             challenger_agent=current_best_agent,
             current_best_agent=stockfish,
             device=device,
-            max_moves=100,
-            num_games=10,
+            max_moves=110,
+            num_games=11,
             v_resign=self_play_session.v_resign
         )
+        win_percent = wins/tot_games
         # print(f'Against Stockfish 5 Level {stockfish_level}, won {win_percent} games, lost {loss_percent} games.')
-        logger.debug(f'Against Stockfish 5 Level {stockfish_level}, won {win_percent} games, lost {loss_percent} games.')
+        logger.info(f'Against Stockfish 5 Level {stockfish_level}, won {wins} games, drew {draws} games, lost {losses} games. ({round(100*win_percent, 2)}% wins.)')
         
         # logging
         stockfish_progress[stockfish_level].append(win_percent)
@@ -157,19 +158,27 @@ def main():
             # print(f'! Upgrading Stockfish level to {stockfish_level}.')
             logger.info(f'! Upgrading Stockfish level to {stockfish_level}.')
 
-            offset = 0
-            for level, progress in stockfish_progress.items():
-                plt.plot([i+offset for i in range(len(progress))], progress, label=f'Stockfish Level {level}')
-                offset += len(progress)
+        offset = 0
+        for level, progress in stockfish_progress.items():
+            # plt.plot([i+offset for i in range(len(progress))], progress, label=f'Stockfish Level {level}')
+            offset += len(progress)
 
-            self_play_games = 10 # TODO change this to config var
-            plt.xlabel(f'Training Loops ({self_play_games} games per)')
-            plt.ylabel(f'Win Percentage')
-            plt.title('dem0 Training Against Stockfish Levels')
-            plt.show()
+            # plt.ion()
+            # self_play_games = 10 # TODO change this to config var
+            # plt.xlabel(f'Training Loops ({self_play_games} games per)')
+            # plt.ylabel(f'Win Percentage')
+            # plt.title('dem0 Training Against Stockfish Levels')
+            # plt.show(block=False)
 
         # step checkpoint
-        checkpoint.step(weights_path=weights_path, info_path=info_path, current_best_agent=deepcopy(current_best_agent))
+        checkpoint.step(
+            weights_path=weights_path, 
+            model_path=model_path, 
+            info_path=info_path, 
+            current_best_agent=deepcopy(current_best_agent)
+        )
+
+        i += 1
     
     stockfish.engine.close()
 
