@@ -12,7 +12,7 @@ from utils.utils import prepare_state_for_net, get_net_best_legal
 from utils.chess_utils_local import action_to_move
 from copy import deepcopy
 import numpy as np
-from utils.agent import Agent
+from utils.agent import Agent, Stockfish
 from utils.self_play import SelfPlaySession
 from utils.memory import ReplayMemory, Transition
 from utils.evaluator import evaluator
@@ -135,7 +135,7 @@ def test(verbose=False):
     print(f'Average MCTS (sims: {sims} threads: {num_threads}) time: {sum(times)/len(times)} s')
 
 if __name__ == '__main__':
-    # test(verbose=True)
+    test(verbose=True)
     # test_mcts_parallel()
     # agent_1 = Agent(version=1, network=DemoNet(num_res_blocks=1))
     # agent_2 = Agent(version=2, network=DemoNet(num_res_blocks=1))
@@ -145,27 +145,40 @@ if __name__ == '__main__':
 
     # from utils.evaluator import evaluator
 
-    current_best_version = 0
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    current_best_network = DemoNet(num_res_blocks=1).to(device)
-    challenger_network = DemoNet(num_res_blocks=2).to(device)
-    current_best_agent = Agent(
-        version=current_best_version, 
-        network=current_best_network, 
-        sims=100
-    )
-    challenger_agent = Agent(
-        version=current_best_version+1, 
-        network=challenger_network, 
-        sims=100
-    )
+    # board = chess.Board()
+    # board.push(chess.Move.from_uci('e2e4'))
+    # mirrored_board = board.mirror()
 
-    current_best_agent = evaluator(
-        challenger_agent=challenger_agent, 
-        current_best_agent=current_best_agent,
-        device=device,
-        max_moves=100,
-        num_games=3,
-        v_resign=-0.95, 
-        verbose=True
-    )    
+    # print()
+    # print(list([uh.uci() for uh in board.legal_moves]))
+    # print(list([uh.uci() for uh in mirrored_board.legal_moves]))
+    # input()
+
+
+
+    # current_best_version = 0
+    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # current_best_network = DemoNet(num_res_blocks=1).to(device)
+    # challenger_network = DemoNet(num_res_blocks=2).to(device)
+    # stockfish_level = 0
+    # stockfish = Stockfish(level=stockfish_level)
+
+    # current_best_agent = Agent(
+    #     version=current_best_version, 
+    #     network=current_best_network, 
+    #     sims=100
+    # )
+    # challenger_agent = Agent(
+    #     version=current_best_version+1, 
+    #     network=challenger_network, 
+    #     sims=100
+    # )
+
+    # current_best_agent = evaluator(
+    #     challenger_agent=current_best_agent, 
+    #     current_best_agent=stockfish,
+    #     device=device,
+    #     max_moves=100,
+    #     num_games=11,
+    #     v_resign=-0.95
+    # )    
