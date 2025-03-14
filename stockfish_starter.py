@@ -152,7 +152,7 @@ if __name__ == '__main__':
         current_best_agent = stockfish_1, 
         device = 'cpu',
         max_moves = 250,
-        num_games = 9999 
+        num_games = 10
     ) # ahhh
 
     with open(f'tests/stock_data.pkl', 'rb') as f:

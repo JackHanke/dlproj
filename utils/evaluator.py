@@ -114,11 +114,14 @@ def evaluator(
 
         logger.debug(f"Completed game {game_idx}/{num_games}")
 
+    win_pecent = challenger_agent_wins/game_idx
+
     # if external evaluation, return number of games challenger agent won
     if current_best_agent.version == 'Stockfish':
-        return challenger_agent_wins, draws, current_best_agent_wins, game_idx
+        return challenger_agent_wins, draws, current_best_agent_wins, win_percent, game_idx
 
     logging.debug(f'Played {(game_idx + 1)} games. Challenger Agent points: {challenger_agent_wins}, Current Best Agent points: {current_best_agent_wins}')
+
 
     # else return best agent
     if challenger_agent_wins >= current_best_agent_wins:
@@ -127,5 +130,5 @@ def evaluator(
     else:
         return_agent = current_best_agent
 
-    return return_agent, challenger_agent_wins, draws, current_best_agent_wins, game_idx
+    return return_agent, challenger_agent_wins, draws, current_best_agent_wins, win_percent, game_idx
 
