@@ -74,12 +74,12 @@ def is_game_over(board: chess.Board):
 # backup function for MCTS, loops until hitting the root node (which is the node without a parent)
 def backup(node: Node, v: float = 0.0):
     with threading.Lock():
-        node.n += 1
-        node.w += v
-        node.q = node.w/node.n
-        # TODO vitual loss remove step?
-        if node.parent is None: return
-        return backup(node=node.parent, v=v)
+        while node is not None:
+            node.n += 1
+            node.w += v
+            node.q = node.w / node.n
+            v = -v  
+            node = node.parent
 
 @torch.no_grad()
 def expand(
