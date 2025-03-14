@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import random
 import logging
+import time
 from copy import deepcopy
 from tqdm import tqdm
 from pettingzoo.classic import chess_v6
@@ -73,8 +74,8 @@ class SelfPlaySession:
             max_moves (int): Maximum number of moves per game before termination.
         """
 
-        # env = chess_v6.env(render_mode='human')  
-        env = chess_v6.env(render_mode=None)  
+        env = chess_v6.env(render_mode='human')  
+        # env = chess_v6.env(render_mode=None)  
 
         player_to_int = {
             "player_0": 1,
@@ -119,7 +120,7 @@ class SelfPlaySession:
                 tau = 1.0 if move_idx < self.temperature_initial_moves else 0
 
                 # Run MCTS 
-                pi, v, selected_move = mcts(
+                pi, v, selected_move, _ = mcts(
                     state=deepcopy(env.board), 
                     observation=state,
                     net=network, 
@@ -160,8 +161,10 @@ class SelfPlaySession:
                 if is_false_positive:
                     self.false_resignations += 1
 
+            push_start_time = time.time()
             # Assign game outcome to all stored states
             for state, policy, player in zip(game_states, move_policies, players):
+                single_push_start_time = time.time()
                 if player == winning_player:
                     adjusted_reward = 1
                 elif winning_player == 0:
@@ -170,7 +173,9 @@ class SelfPlaySession:
                     adjusted_reward = -1
 
                 training_data.push(state.float().permute(2, 0, 1), policy, torch.tensor([adjusted_reward], dtype=torch.float))  
+                logger.info(f'Pushed single sample to queue in {time.time()-single_push_start_time} s')
 
+            logger.info(f'Pushed self-play data to queue in {time.time()-push_start_time} s')
             logger.debug(f"Completed game {game_idx}/{num_games}")
 
         # Adjust resignation threshold after batch of games

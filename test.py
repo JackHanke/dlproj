@@ -117,19 +117,7 @@ def test(verbose=False):
             start = time.time()
             sims = 100
             num_threads = 4
-            # with Timer():
-            
-            # pi, val, action, subtree = mcts(
-            #     state=deepcopy(env.board), 
-            #     observation=observation['observation'],
-            #     net=net, 
-            #     tau=1, 
-            #     sims=sims, 
-            #     num_threads=num_threads,
-            #     device=device, 
-            #     verbose=False
-            # )
-            
+
             if (i % 2) == 0:
                 action, val = agent_1.inference(
                     board_state=deepcopy(env.board),
@@ -146,9 +134,6 @@ def test(verbose=False):
                     tau=1
                 )
 
-            # print("Final policy vector (pi):", pi)
-            # print("Estimated value:", val)
-            # print("Chosen action index:", action)
             t = time.time()-start
             print(f'MCTS with {sims} sims completes after {t} s')
             times.append(t)

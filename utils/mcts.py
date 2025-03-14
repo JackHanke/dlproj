@@ -219,12 +219,7 @@ def mcts(
     # if not, sample from pi
     else: sampled_action = int(m.sample().item())
 
-    # get subtree of path we plan to take (for node caching )
-    sub_tree = deepcopy(root.children[actions_to_moves[sampled_action]])
-    sub_tree.parent = None # 
-    if state.turn:
-        print(sub_tree.state)
-        print('*'*50)
+    sub_tree = None
     root = None # dereference root for memory management
     gc.collect() # collect garbage NOTE this does nothing substantial
 

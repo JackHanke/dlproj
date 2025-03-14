@@ -1,92 +1,214 @@
 import torch
-from utils.training import train_on_batch
+import torch.multiprocessing as mp
+import time
+import os
+from tqdm import tqdm
+from copy import deepcopy
+import logging
+from datetime import datetime
+import matplotlib.pyplot as plt
+
+from utils.training import train_on_batch, Checkpoint
 from utils.self_play import SelfPlaySession
 from utils.memory import ReplayMemory
 from utils.networks import DemoNet
-from utils.configs import load_config, Config
 from utils.optimizer import get_optimizer  
 from utils.evaluator import evaluator
-from utils.agent import Agent
-from copy import deepcopy
+from utils.agent import Agent, Stockfish
 from utils.utils import Timer
 
 
-def setup():
-    """Initialize configurations, network, replay buffer, and optimizer."""
-    config = load_config()
+def training_loop(stop_event, memory, network, device, optimizer_params, counter):
+    """
+    Continuously train on a batch until stop_event is set.
+    The optimizer is created inside the child process using optimizer_params.
+    """
+    optimizer = get_optimizer(
+        optimizer_name=optimizer_params["optimizer_name"],
+        lr=optimizer_params["lr"],
+        weight_decay=optimizer_params["weight_decay"],
+        model=network,
+        momentum=optimizer_params.get("momentum", 0.0)
+    )
+    
+    i = 0
+    while not stop_event.is_set() or i == 10:
+        train_on_batch(
+            data=memory,
+            network=network,
+            batch_size=32,
+            device=device,
+            optimizer=optimizer
+        )
+        i += 1
+
+    counter.value = i  # Store the final value of i in the shared variable
+    logging.info(f'Memory length after self play: {len(memory)}')
+
+# mp_training is whether or not to use multiprocessing training to run while self-play runs
+def main(mp_training: bool):
+    logger = logging.getLogger(__name__)
+    logging.basicConfig(filename='dem0.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+    logging.info(f'\n\nRunning Experiment on {datetime.now()} with the following configs:')
+    # TODO add all configs to logging for this log
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # Initialize replay buffer
-    replay_buffer = ReplayMemory(maxlen=config.training.data_buffer_size)
-
-    # Initialize network
-    network = DemoNet(num_res_blocks=1).to(device)
-
-    # Get optimizer using the helper function
-    optimizer = get_optimizer(
-        optimizer_name=config.training.optimizer,
-        lr=config.training.learning_rate.initial,
-        weight_decay=config.training.weight_decay,
-        model=network,
-        momentum=config.training.momentum  # Only applies if using SGD
-    )
-
-    # Initialize self-play agent
-    self_play_agent = SelfPlaySession(v_resign_start=config.self_play.resign_threshold)
-
-    return config, device, replay_buffer, network, optimizer, self_play_agent
-
-
-def main():
-    device = "cpu"
     self_play_session = SelfPlaySession()
-    memory = ReplayMemory(1000)
-    current_best_network = DemoNet(num_res_blocks=1)
-    challenger_network = DemoNet(num_res_blocks=1)
-    # Suppose we only loop twice for this example
-    for i in range(2):
-        print(">"*50, f'Dem0 Iteration {i+1}:','\n\n' ,sep='\n')
-        # Init networks
-        current_best_agent = Agent(version=0, network=current_best_network, sims=5)
-        challenger_agent = Agent(version=1, network=challenger_network, sims=5)
+    memory = ReplayMemory(10000)
+    training_epochs_per_iter = 2
+    optimizer_params = {
+        "optimizer_name": "adam",
+        "lr": 0.0001,
+        "weight_decay": 1e-4,
+        "momentum": 0.9  
+    }
+        
+    checkpoint = Checkpoint(verbose=True, compute_elo=False)
+    
+    current_best_network = DemoNet(num_res_blocks=5).to(device)
+    challenger_network = deepcopy(current_best_network).to(device)
 
-        # run self play on challenger network
-        print('Running self play...')
+    base_path = "checkpoints/best_model/"
+    weights_path = os.path.join(base_path, "weights.pth")
+    info_path = os.path.join(base_path, "info.json")
+    model_path = os.path.join(base_path, "model.pth")
+
+    stockfish_level = 0
+    stockfish_progress = {0:[]}
+    current_best_version = 0
+    i = 0 # number of iterations performed
+    while True:
+        iter_start_time = time.time()
+        # print(">" * 50)
+        # print()
+        logger.info(f'Beginning dem0 Iteration {i+1}...\n')
+        # TODO do we have to remake the agent every iter?
+        current_best_agent = Agent(
+            version=current_best_version, 
+            network=current_best_network, 
+            sims=80
+        )
+        challenger_agent = Agent(
+            version=current_best_version+1, 
+            network=challenger_network, 
+            sims=80
+        )
+        
+        # NOTE multiprocessing code
+        if mp_training:
+            stop_event = mp.Event()
+            counter = mp.Value("i", 0)  # Shared integer for storing i
+            training_process = mp.Process(
+                target=training_loop,
+                args=(stop_event, memory, challenger_network, device, optimizer_params, counter)
+            )
+            training_process.start()
+
+        # 
         self_play_session.run_self_play(
             training_data=memory,
-            network=challenger_network,
-            n_sims=2,
-            num_games=2,
-            max_moves=500
-        )
-
-        print("\nTraining on batch...")
-        train_on_batch(
-            data=memory, 
-            network=challenger_network,
-            batch_size=1,
+            network=current_best_network,
             device=device,
-            optimizer=get_optimizer('adam', lr=0.0001, weight_decay=1e-4, model=current_best_network)
+            n_sims=80,
+            num_games=12,
+            max_moves=250
         )
 
-        print("\nEvaluating...")
-        current_best_agent = evaluator(
+        if not mp_training:
+            optimizer = get_optimizer(
+                optimizer_name=optimizer_params["optimizer_name"],
+                lr=optimizer_params["lr"],
+                weight_decay=optimizer_params["weight_decay"],
+                model=challenger_network,
+                momentum=optimizer_params.get("momentum", 0.0)
+            )
+            # NOTE still uses multiprocessing queue, see if this changes anything
+            train_bar = tqdm(range(1, training_epochs_per_iter+1))
+            for train_idx in train_bar:
+                train_on_batch(
+                    data=memory,
+                    network=challenger_network,
+                    batch_size=32,
+                    device=device,
+                    optimizer=optimizer
+                )
+                train_bar.set_description(f"Training, Epoch {train_idx}.")
+        
+        if mp_training:
+            stop_event.set()
+            training_process.join()
+        
+        # print(f"\nTraining iterations completed: {counter.value}")  # Print the value of i
+        logger.debug(f'Training iterations completed: {counter.value}')
+
+        # print("\nEvaluating...")
+        new_best_agent, wins, draws, losses, tot_games = evaluator(
             challenger_agent=challenger_agent, 
-            current_best_agent=current_best_agent, 
-            max_moves=500,
-            num_games=3, 
-            v_resign=self_play_session.v_resign, 
-            verbose=True
+            current_best_agent=current_best_agent,
+            device=device,
+            max_moves=110,
+            num_games=7,
+            v_resign=self_play_session.v_resign
         )
-        print(f'After this loop, the best_agent is {current_best_agent.version}')
-        print('\n\n')
+        win_percent = wins/tot_games
+        # print(f'After this loop, the best_agent is {current_best_agent.version}\n\n')
+        logger.info(f'Agent {challenger_agent.version} playing Agent {current_best_agent.version}, won {wins} games, drew {draws} games, lost {losses} games. ({round(100*win_percent, 2)}% wins.)')
 
-        # Save best without allowing it to update next iteration
-        current_best_network = deepcopy(current_best_agent.network)
-        # Link to network
-        challenger_network = current_best_agent.network
+        current_best_network = deepcopy(new_best_agent.network).to(device)
+        challenger_network = new_best_agent.network.to(device)
+        current_best_version = new_best_agent.version
 
+        # print("\nExternal evaluating...")
+        stockfish = Stockfish(level=stockfish_level)
+        wins, draws, losses, tot_games = evaluator(
+            challenger_agent=current_best_agent,
+            current_best_agent=stockfish,
+            device=device,
+            max_moves=100,
+            num_games=9,
+            v_resign=self_play_session.v_resign
+        )
+        win_percent = wins/tot_games
+        # print(f'Against Stockfish 5 Level {stockfish_level}, won {win_percent} games, lost {loss_percent} games.')
+        logger.info(f'Against Stockfish 5 Level {stockfish_level}, won {wins} games, drew {draws} games, lost {losses} games. ({round(100*win_percent, 2)}% wins.)')
+        
+        # logging
+        stockfish_progress[stockfish_level].append(win_percent)
+
+        if win_percent > 0.55:
+            # update stockfish to higher level
+            stockfish_level += 1
+            stockfish.engine.configure({"Skill Level": stockfish_level})
+            # print(f'! Upgrading Stockfish level to {stockfish_level}.')
+            logger.info(f'! Upgrading Stockfish level to {stockfish_level}.')
+
+        offset = 0
+        for level, progress in stockfish_progress.items():
+            # plt.plot([i+offset for i in range(len(progress))], progress, label=f'Stockfish Level {level}')
+            offset += len(progress)
+
+            # plt.ion()
+            # self_play_games = 10 # TODO change this to config var
+            # plt.xlabel(f'Training Loops ({self_play_games} games per)')
+            # plt.ylabel(f'Win Percentage')
+            # plt.title('dem0 Training Against Stockfish Levels')
+            # plt.show(block=False)
+
+        # step checkpoint
+        checkpoint.step(
+            weights_path=weights_path, 
+            model_path=model_path, 
+            info_path=info_path, 
+            current_best_agent=deepcopy(current_best_agent)
+        )
+
+        i += 1
+        logger.info(f'Full iteration completed in {round(time.time()-start, 2)} s.')
+    
+    stockfish.engine.close()
 
 if __name__ == "__main__":
     with Timer():
-        main()
+        mp.set_start_method("spawn")  
+        main(mp_training=False)

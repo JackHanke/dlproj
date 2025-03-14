@@ -21,7 +21,8 @@ def evaluator(
     if current_best_agent.version == 'Stockfish':
         env = chess_v6.env(render_mode='human')  
     else:
-        env = chess_v6.env(render_mode=None)  
+        env = chess_v6.env(render_mode='human')  
+        # env = chess_v6.env(render_mode=None)  
 
     # env = chess_v6.env()
     player_to_int = {"player_0": 1, "player_1": -1}
