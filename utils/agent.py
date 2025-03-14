@@ -15,18 +15,42 @@ class Agent:
         self.node_cache = None
 
     def inference(self, board_state: chess.Board, observation: torch.tensor, device: torch.device, tau: float = 0) -> tuple[int, float]:
-        _, value, action = mcts(
+        # get node cache
+        # need to find what child
+        # print(board_state)
+        # input()
+        # NOTE uhhh cant pickle a lock so i cant deepcopy the tree
+        if self.node_cache is not None and board_state.turn:
+            print(self.node_cache.state)
+            input(self.node_cache.n)
+            # for move, child in self.node_cache.children.items():
+            #     print(child.state)
+            #     print(board_state)
+            #     print('-'*50)
+            #     input()
+            #     if child.state == board_state:
+            #         root = child
+            #         print('found it!')
+            #         print(child.state)
+            #         break
+
+        # elif self.node_cache is None: root = None
+        root = None
+
+        _, value, action, subtree_node = mcts(
             state=board_state, 
             observation=observation,
             net=self.network, 
+            node=root,
             device=device, 
             tau=tau, 
             sims=self.sims, 
             inference_mode=True
         )
-            # given_node=self.node_cache
-        # self.node_cache = child_node
-        # TODO once this returns a node as well, we cache the tree with the agent
+
+        # update node cache
+        self.node_cache = subtree_node
+
         return action, value
     
     def compute_bayes_elo(self, *args):

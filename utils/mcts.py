@@ -6,19 +6,18 @@ import threading
 import logging
 import numpy as np
 import concurrent.futures
+import gc
 from copy import deepcopy
 
-from utils.chess_utils_local import get_observation, legal_moves, result_to_int, get_action_mask
+from utils.chess_utils_local import get_observation, legal_moves, result_to_int, get_action_mask, actions_to_moves, moves_to_actions
 from utils.utils import prepare_state_for_net, filter_legal_moves, filter_legal_moves_and_renomalize, renormalize_network_output, rand_argmax
 
-# logger = logging.getLogger(__name__)
-
-# NOTE this code refers to a chess.Move and a UCI string as a 'move'
-# while the action indexes provided by Pettingzoo as an 'action'
-
+# NOTE This implementation mirrors all black boards to be consistent with how the PettingZoo source interacts with python-chess
+# NOTE this code refers to a chess.Move and a UCI string as a 'move' while the action indexes provided by Pettingzoo as an 'action'
+# NOTE virtual loss is for high number of threads searching the same tree. currently is not implemented
 VIRTUAL_LOSS = 1
 
-# node of Monte Carlo Tree
+# node of search tree
 class Node:
     def __init__(
             self, 
@@ -36,41 +35,28 @@ class Node:
         self.q = 0.0 # mean reward from this Node
         self.virtual_loss = 0 # virtual loss for node
         self.p = prior # prior from network
-        self.lock = threading.Lock() # for thread safety - 1 trillion parameter thing
-        # self.lock = threading.RLock() # for thread safety - 1 trillion parameter thing
 
 # creates the final pi tensor (same size as network output)
 def create_pi_vector(node: Node, tau: float):
     pi = [0 for _ in range(4672)]
-    action_mask = torch.tensor(get_action_mask(orig_board=node.state))
-    legal_action_indexes = torch.nonzero(action_mask)
 
-    legal_moves_uci = [move_obj.uci() for move_obj in node.state.legal_moves]
-
-    if tau == 0:
-        most_visited_action, highest_visit_count = 0, 0
-        for move, action in zip(legal_moves_uci, legal_action_indexes):
-            try:
-                action = action.item()
-                visit = (node.children[move].n)
-                if visit > highest_visit_count:
-                    highest_visit_count = visit
-                    most_visited_action = action
-            except KeyError:
-                pass
+    if tau == 0: # if tau ==0, find action with highest visit count, create 1-hot pi
+        highest_n, most_visited_action = 0, None
+        for move, child in node.children.items():
+            action = moves_to_actions[move]
+            if child.n > highest_n:
+                highest_n = child.n
+                most_visited_action = action
         pi[most_visited_action] = 1
         pi = torch.tensor(pi)
         return pi
 
+    # else construct a distribution including illegal moves with zero probability
     pi_denom = sum([child.n**(1/tau) for child in node.children.values()])
-
-    for move, action in zip(legal_moves_uci, legal_action_indexes):
-        action = action.item()
-        try:
-            val = (node.children[move].n ** (1/tau))/pi_denom
-            pi[action] = val
-        except KeyError:
-            pi[action] = 0
+    for move, child in node.children.items():
+        action = moves_to_actions[move]
+        val = (child.n ** (1/tau))/pi_denom
+        pi[action] = val
     pi = torch.tensor(pi)
     return pi
 
@@ -79,7 +65,6 @@ def is_game_over(board: chess.Board):
     # if game ends
     next_legal_moves = legal_moves(board)
     is_stale_or_checkmate = not any(next_legal_moves)
-
     # claim draw is set to be true to align with normal tournament rules
     is_insufficient_material = board.is_insufficient_material()
     can_claim_draw = board.can_claim_draw()
@@ -88,7 +73,7 @@ def is_game_over(board: chess.Board):
 
 # backup function for MCTS, loops until hitting the root node (which is the node without a parent)
 def backup(node: Node, v: float = 0.0):
-    with node.lock:
+    with threading.Lock():
         node.n += 1
         node.w += v
         node.q = node.w/node.n
@@ -120,29 +105,38 @@ def expand(
     # if this is a new node, create all children with priors
     if len(node.children.keys()) == 0:
         # TODO do I need a lock to get the state?
-        next_board = get_observation(orig_board=node.state, player=0)
+        next_board = get_observation(orig_board=node.state, player=0) # NOTE no flipping the observation
 
         # create observation tensor with proper board history
         new_observation = np.dstack((next_board[:, :, 7:], node.observation_tensor[:, :, :-13]))
         state_tensor = prepare_state_for_net(state=new_observation.copy()).to(device)
         
         policy, net_v = net.forward(state_tensor)
-        # TODO backup v
+        # backup v
         action_mask = torch.tensor(get_action_mask(orig_board=node.state))
         p_vec = filter_legal_moves_and_renomalize(policy_vec=policy, legal_moves=action_mask)
 
-        with node.lock:
-            for i, move in enumerate(node.state.legal_moves):
-                # if move.uci() not in node.children:
-                next_state = deepcopy(node.state)
-                next_state.push(move)
-                # Set the prior for this move to the corresponding network output.
-                new_node = Node(
-                    state=next_state,
-                    observation_tensor=new_observation,
-                    parent=node, 
-                    prior=p_vec[i].item()
-                )
+        if recursion_count == 0:
+            # Inject Dirichlet noise at the root
+            epsilon = 0.25
+            alpha = 0.03
+            num_legal = len(p_vec)
+            noise = torch.distributions.Dirichlet(torch.full((num_legal,), alpha)).sample().unsqueeze(1).to(device)
+            p_vec = ((1 - epsilon) * p_vec) + (epsilon * noise)
+
+        for i, move in enumerate(node.state.legal_moves):
+            # if move.uci() not in node.children:
+            next_state = deepcopy(node.state)
+            next_state.push(move)
+            next_state = next_state.mirror()
+            # Set the prior for this move to the corresponding network output.
+            new_node = Node(
+                state=next_state,
+                observation_tensor=new_observation,
+                parent=node, 
+                prior=p_vec[i].item()
+            )
+            with threading.Lock():
                 node.children[move.uci()] = new_node
         # because we were doing things wrong
         return backup(node=node, v=net_v)
@@ -152,7 +146,7 @@ def expand(
     selected_move = None
     n = node.n + 1e-6
     for move in node.state.legal_moves:
-        with node.lock:
+        with threading.Lock():
             try:
                 child = node.children[move.uci()]
             except KeyError as e:
@@ -161,7 +155,7 @@ def expand(
                 logging.error(f'Legal moves : {[thing.uci() for thing in node.state.legal_moves]}')
                 logging.error(f'  Children  : {[thing for thing in node.children]}')
                 input('Illegal move entered. Possible race condition error.')
-        with child.lock:
+        # with child.lock:
             q = child.q
             n_val = child.n
             p = child.p
@@ -171,7 +165,7 @@ def expand(
             best_score = score
             selected_move = move
     
-    with node.lock:
+    with threading.Lock():
         next_node = node.children[selected_move.uci()]
 
     # TODO virtual loss add stuff?
@@ -192,6 +186,7 @@ def mcts(
         observation: torch.tensor,
         net: torch.nn.Module, 
         tau: int, 
+        node: Node = None,
         c_puct: int = 3,
         sims: int = 1, 
         num_threads: int = 1,
@@ -199,52 +194,38 @@ def mcts(
         verbose: bool = False,
         inference_mode: bool = False
     ):
-    
-    net.eval()
-    root = Node(
-        state=state,
-        observation_tensor=observation
-        )
-    root.n += 1
+        
+    if node is None: # if there is no subtree given to traverse, initialize root
+        if state.turn:
+            root = Node(state=state, observation_tensor=observation)
+        if not state.turn: # if black's turn, we mirror the board to allow for easier translation of moes to actions
+            root = Node(state=state.mirror(), observation_tensor=observation)
+    else: # else provided node is the root of the tree
+        root = node 
 
-    state_tensor = prepare_state_for_net(state=observation.copy()).to(device)
-
-    policy, _ = net.forward(state_tensor)
-    action_mask = torch.tensor(get_action_mask(orig_board=root.state))
-    p_vec = filter_legal_moves_and_renomalize(policy_vec=policy, legal_moves=action_mask)
-
-    # Inject Dirichlet noise at the root
-    epsilon = 0.25
-    alpha = 0.03
-    num_legal = len(p_vec)
-    noise = torch.distributions.Dirichlet(torch.full((num_legal,), alpha)).sample().unsqueeze(1).to(device)
-    p_vec = ((1 - epsilon) * p_vec) + (epsilon * noise)
-    # NOTE THIS MAKES A SCARY ASSUMPTION MAKE SURE ITS RIGHT
-    for i, move in enumerate(root.state.legal_moves):
-        next_state = deepcopy(root.state)
-        next_state.push(move)
-        # Initialize child nodes with the noisy prior.
-        root.children[move.uci()] = Node(
-            state=next_state, 
-            observation_tensor=observation,
-            parent=root, 
-            prior=p_vec[i].item()
-        )
-
-    # white people be like "jee wiz"
+    # expand tree with num_threads threads
     with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
         futures = [executor.submit(expand, root, net, device, 0, verbose, c_puct) for _ in range(sims)]
         _ = [f.result() for f in futures]
 
+    # construct pi from root node and given tau value
     pi = create_pi_vector(node=root, tau=tau)
     # value is the mean value from the root
     value = root.q
-
-    # get best action sampled from pi
-    if inference_mode:
-        return pi, value, int(pi.argmax(-1).item())
-    
+    # create pi distribution
     m = Categorical(pi)
-    chosen_action = int(m.sample().item())
-    return pi, value, chosen_action
+    # if inference, just pick the best move
+    if inference_mode: sampled_action = int(pi.argmax(-1).item())
+    # if not, sample from pi
+    else: sampled_action = int(m.sample().item())
 
+    # get subtree of path we plan to take (for node caching )
+    sub_tree = deepcopy(root.children[actions_to_moves[sampled_action]])
+    sub_tree.parent = None # 
+    if state.turn:
+        print(sub_tree.state)
+        print('*'*50)
+    root = None # dereference root for memory management
+    gc.collect() # collect garbage NOTE this does nothing substantial
+
+    return pi, value, sampled_action, sub_tree
