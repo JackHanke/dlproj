@@ -1,23 +1,23 @@
 from pettingzoo.classic import chess_v6
-from utils.networks import DemoNet
 import torch
 import time
+import chess
+import numpy as np
 # from utils.mcts import mcts
 # from utils.mcts_mp_danya import parallel_mcts
+from copy import deepcopy
 from utils.mcts import mcts
-
+import torch.multiprocessing as mp
 
 # from utils.vanillamcts import vanilla_mcts
 from utils.utils import prepare_state_for_net, get_net_best_legal
 from utils.chess_utils_local import action_to_move
-from copy import deepcopy
-import numpy as np
+from utils.networks import DemoNet
 from utils.agent import Agent, Stockfish
 from utils.self_play import SelfPlaySession
 from utils.memory import ReplayMemory, Transition
 from utils.evaluator import evaluator
-import chess
-import torch.multiprocessing as mp
+from utils.agent import Agent
 from utils.utils import Timer
 
 
@@ -76,9 +76,23 @@ def test(verbose=False):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     # device = torch.device('cpu')
     net = DemoNet(num_res_blocks=1).to(device)
+
+    agent_1 = Agent(
+        version=0,
+        network=net,
+        sims=100
+    )
+
+    agent_2 = Agent(
+        version=0,
+        network=deepcopy(net),
+        sims=100
+    )
+
     # net.share_memory()
     times = []
     termination, truncation = False, False
+    i = 0
     while not termination and not truncation:
         if verbose: print(env.board)
         # get state information
@@ -102,23 +116,41 @@ def test(verbose=False):
 
             start = time.time()
             sims = 100
-            num_threads = 1
+            num_threads = 4
             # with Timer():
-            pi, val, action = mcts(
-                state=deepcopy(env.board), 
-                observation=observation['observation'],
-                net=net, 
-                tau=1, 
-                sims=sims, 
-                num_threads=num_threads,
-                device=device, 
-                verbose=False
-            )
+            
+            # pi, val, action, subtree = mcts(
+            #     state=deepcopy(env.board), 
+            #     observation=observation['observation'],
+            #     net=net, 
+            #     tau=1, 
+            #     sims=sims, 
+            #     num_threads=num_threads,
+            #     device=device, 
+            #     verbose=False
+            # )
+            
+            if (i % 2) == 0:
+                action, val = agent_1.inference(
+                    board_state=deepcopy(env.board),
+                    observation=observation['observation'],
+                    device=device,
+                    tau=1
+                )
+
+            elif (i % 2) == 1:
+                action, val = agent_2.inference(
+                    board_state=deepcopy(env.board),
+                    observation=observation['observation'],
+                    device=device,
+                    tau=1
+                )
+
             # print("Final policy vector (pi):", pi)
             # print("Estimated value:", val)
-            print("Chosen action index:", action)
+            # print("Chosen action index:", action)
             t = time.time()-start
-            if verbose: print(f'MCTS with {sims} sims completes after {t} s')
+            print(f'MCTS with {sims} sims completes after {t} s')
             times.append(t)
             # input()
 
@@ -135,7 +167,7 @@ def test(verbose=False):
     print(f'Average MCTS (sims: {sims} threads: {num_threads}) time: {sum(times)/len(times)} s')
 
 if __name__ == '__main__':
-    test(verbose=True)
+    test(verbose=False)
     # test_mcts_parallel()
     # agent_1 = Agent(version=1, network=DemoNet(num_res_blocks=1))
     # agent_2 = Agent(version=2, network=DemoNet(num_res_blocks=1))

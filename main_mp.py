@@ -31,7 +31,7 @@ def training_loop(stop_event, memory, network, device, optimizer_params, counter
     )
     
     i = 0
-    while not stop_event.is_set():
+    while not stop_event.is_set() or i == 10:
         train_on_batch(
             data=memory,
             network=network,
@@ -42,7 +42,7 @@ def training_loop(stop_event, memory, network, device, optimizer_params, counter
         i += 1
 
     counter.value = i  # Store the final value of i in the shared variable
-    logging.debug(f'Memory length after self play: {len(memory)}')
+    logging.info(f'Memory length after self play: {len(memory)}')
 
 
 def main():
@@ -73,7 +73,7 @@ def main():
         # print(">" * 50)
         # print()
         logger.info(f'Beginning dem0 Iteration {i+1}...\n')
-        
+        # TODO do we have to remake the agent every iter?
         current_best_agent = Agent(
             version=current_best_version, 
             network=current_best_network, 
@@ -108,7 +108,7 @@ def main():
             device=device,
             n_sims=80,
             num_games=12,
-            max_moves=110
+            max_moves=250
         )
         
         stop_event.set()
@@ -118,11 +118,11 @@ def main():
         logger.debug(f'Training iterations completed: {counter.value}')
 
         # print("\nEvaluating...")
-        current_best_agent, wins, draws, losses, tot_games = evaluator(
+        new_best_agent, wins, draws, losses, tot_games = evaluator(
             challenger_agent=challenger_agent, 
             current_best_agent=current_best_agent,
             device=device,
-            max_moves=80,
+            max_moves=110,
             num_games=7,
             v_resign=self_play_session.v_resign
         )
@@ -130,9 +130,9 @@ def main():
         # print(f'After this loop, the best_agent is {current_best_agent.version}\n\n')
         logger.info(f'Agent {challenger_agent.version} playing Agent {current_best_agent.version}, won {wins} games, drew {draws} games, lost {losses} games. ({round(100*win_percent, 2)}% wins.)')
 
-        current_best_network = deepcopy(current_best_agent.network).to(device)
-        challenger_network = current_best_agent.network.to(device)
-        current_best_version = current_best_agent.version
+        current_best_network = deepcopy(new_best_agent.network).to(device)
+        challenger_network = new_best_agent.network.to(device)
+        current_best_version = new_best_agent.version
 
         # print("\nExternal evaluating...")
         stockfish = Stockfish(level=stockfish_level)
@@ -140,8 +140,8 @@ def main():
             challenger_agent=current_best_agent,
             current_best_agent=stockfish,
             device=device,
-            max_moves=110,
-            num_games=11,
+            max_moves=100,
+            num_games=9,
             v_resign=self_play_session.v_resign
         )
         win_percent = wins/tot_games
