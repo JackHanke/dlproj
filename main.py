@@ -143,7 +143,7 @@ def main(mp_training: bool):
         logger.debug(f'Training iterations completed: {counter.value}')
 
         # print("\nEvaluating...")
-        new_best_agent, wins, draws, losses, tot_games = evaluator(
+        new_best_agent, wins, draws, losses, win_percent, tot_games = evaluator(
             challenger_agent=challenger_agent, 
             current_best_agent=current_best_agent,
             device=device,
@@ -151,7 +151,6 @@ def main(mp_training: bool):
             num_games=7,
             v_resign=self_play_session.v_resign
         )
-        win_percent = wins/tot_games
         # print(f'After this loop, the best_agent is {current_best_agent.version}\n\n')
         logger.info(f'Agent {challenger_agent.version} playing Agent {current_best_agent.version}, won {wins} games, drew {draws} games, lost {losses} games. ({round(100*win_percent, 2)}% wins.)')
 
@@ -161,7 +160,7 @@ def main(mp_training: bool):
 
         # print("\nExternal evaluating...")
         stockfish = Stockfish(level=stockfish_level)
-        wins, draws, losses, tot_games = evaluator(
+        wins, draws, losses, win_percent, tot_games = evaluator(
             challenger_agent=current_best_agent,
             current_best_agent=stockfish,
             device=device,
@@ -169,7 +168,6 @@ def main(mp_training: bool):
             num_games=9,
             v_resign=self_play_session.v_resign
         )
-        win_percent = wins/tot_games
         # print(f'Against Stockfish 5 Level {stockfish_level}, won {win_percent} games, lost {loss_percent} games.')
         logger.info(f'Against Stockfish 5 Level {stockfish_level}, won {wins} games, drew {draws} games, lost {losses} games. ({round(100*win_percent, 2)}% wins.)')
         

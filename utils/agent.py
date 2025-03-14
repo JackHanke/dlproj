@@ -8,8 +8,9 @@ from sys import platform
 import time
 
 class Agent:
-    def __init__(self, version: int, network: torch.nn.Module, sims: int = 10):
+    def __init__(self, version: int, network: torch.nn.Module, sims: int = 100):
         self.version = version
+        self.name = f'dem0 version {self.version}'
         self.network = network
         self.sims = sims
         self.node_cache = None
@@ -38,9 +39,10 @@ class Agent:
         raise NotImplementedError
 
 class Stockfish:
-    def __init__(self, level, move_time):
+    def __init__(self, level: int, move_time:float = 1.0):
         # Sotckfish 5: https://stockfishchess.org/blog/2014/stockfish-5/
         self.version = "Stockfish"
+        self.name = "Stockfish"
         self.network = None
         self.sims = None
         self.nod_cache = None
