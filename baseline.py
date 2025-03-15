@@ -22,7 +22,7 @@ if __name__ == '__main__':
         sims=2
     )
     stockfish_level = 0
-    stockfish = Stockfish(level=stockfish_level, move_time=0.2)
+    stockfish = Stockfish(level=stockfish_level, move_time=0.1)
     wins, draws, losses, win_percent, tot_games = evaluator(
         challenger_agent=pretrained_agent,
         current_best_agent=stockfish,
