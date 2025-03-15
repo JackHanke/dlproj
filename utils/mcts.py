@@ -81,8 +81,9 @@ def backup(node: Node, v: float = 0.0):
             v = -v  
             node = node.parent
 
+
 @torch.no_grad()
-def expand(
+def simulate(
         node: Node, 
         net: torch.nn.Module, 
         device: torch.device = None, 
@@ -90,93 +91,70 @@ def expand(
         verbose: bool = False,
         c_puct: int = 3,
     ):
-    # if the node is a game over state
-    if is_game_over(board=node.state):
-        # get the associated value of the state, ( 1, 0, -1 )
-        v = result_to_int(result_str=node.state.result(claim_draw=True))
-        # backup the sim
-        return backup(node=node, v=v)
+    """
+    Simulation step of MCTS following AlphaZero structure:
+    a) Selection - Traverse based on UCB
+    b) Expansion - If new node, add children
+    c) Evaluation - Use NN to get prior & value estimate
+    d) Backup - Propagate values back
+    """
+    
+    # a) Selection - Traverse down the tree using UCB
+    if len(node.children) > 0:
+        best_score = -float('inf')
+        selected_move = None
+        n = node.n + 1e-6  # Avoid division by zero
 
-    # if the game has gone on too long, it's a draw TODO delete this check?
-    elif recursion_count > 60:
-        # backup the sim with draw scoring
-        return backup(node=node, v=0.0)
-
-    # if this is a new node, create all children with priors
-    if len(node.children.keys()) == 0:
-        # TODO do I need a lock to get the state?
-        next_board = get_observation(orig_board=node.state, player=0) # NOTE no flipping the observation
-
-        # create observation tensor with proper board history
-        new_observation = np.dstack((next_board[:, :, 7:], node.observation_tensor[:, :, :-13]))
-        state_tensor = prepare_state_for_net(state=new_observation.copy()).to(device)
-        
-        policy, net_v = net.forward(state_tensor)
-        # backup v
-        action_mask = torch.tensor(get_action_mask(orig_board=node.state))
-        p_vec = filter_legal_moves_and_renomalize(policy_vec=policy, legal_moves=action_mask)
-
-        if recursion_count == 0:
-            # Inject Dirichlet noise at the root
-            epsilon = 0.25
-            alpha = 0.03
-            num_legal = len(p_vec)
-            noise = torch.distributions.Dirichlet(torch.full((num_legal,), alpha)).sample().unsqueeze(1).to(device)
-            p_vec = ((1 - epsilon) * p_vec) + (epsilon * noise)
-
-        for i, move in enumerate(node.state.legal_moves):
-            # if move.uci() not in node.children:
-            next_state = deepcopy(node.state)
-            next_state.push(move)
-            next_state = next_state.mirror()
-            # Set the prior for this move to the corresponding network output.
-            new_node = Node(
-                state=next_state,
-                observation_tensor=new_observation,
-                parent=node, 
-                prior=p_vec[i].item()
-            )
-            with threading.Lock():
-                node.children[move.uci()] = new_node
-        # because we were doing things wrong
-        return backup(node=node, v=net_v)
-
-    # with priors (either already there or previously calculated!)
-    best_score = -float('inf')
-    selected_move = None
-    n = node.n + 1e-6
-    for move in node.state.legal_moves:
-        with threading.Lock():
-            try:
-                child = node.children[move.uci()]
-            except KeyError as e:
-                logging.error(e)
-                logging.error(f'Board player: {node.state.turn}')
-                logging.error(f'Legal moves : {[thing.uci() for thing in node.state.legal_moves]}')
-                logging.error(f'  Children  : {[thing for thing in node.children]}')
-                input('Illegal move entered. Possible race condition error.')
-        # with child.lock:
+        for move in node.state.legal_moves:
+            child = node.children[move.uci()]
             q = child.q
             n_val = child.n
             p = child.p
-        u = c_puct * np.sqrt(n) * p / (1 + n_val)
-        score = q + u
-        if score > best_score:
-            best_score = score
-            selected_move = move
-    
-    with threading.Lock():
+            u = c_puct * np.sqrt(n) * p / (1 + n_val)  # UCB calculation
+            score = q + u
+            if score > best_score:
+                best_score = score
+                selected_move = move
+
         next_node = node.children[selected_move.uci()]
+        return simulate(next_node, net, device, recursion_count+1, verbose, c_puct)
 
-    # TODO virtual loss add stuff?
+    # b) Expansion - If at a leaf node, check if it's terminal or create children
+    if is_game_over(node.state):
+        v = result_to_int(node.state.result(claim_draw=True))  # Terminal value
+        return backup(node, v)
 
-    return expand(
-        node=next_node, 
-        net=net, 
-        device=device,
-        recursion_count=recursion_count+1, 
-        verbose=verbose
-    )
+    # c) Evaluation - Run network inference to get prior and value
+    next_board = get_observation(node.state, player=0)  
+    new_observation = np.dstack((next_board[:, :, 7:], node.observation_tensor[:, :, :-13]))
+    state_tensor = prepare_state_for_net(new_observation.copy()).to(device)
+    
+    policy, net_v = net(state_tensor)
+    action_mask = torch.tensor(get_action_mask(node.state))
+    p_vec = filter_legal_moves_and_renomalize(policy, action_mask)
+
+    if recursion_count == 0:  # Add Dirichlet noise at root
+        epsilon = 0.25
+        alpha = 0.03
+        num_legal = len(p_vec)
+        noise = torch.distributions.Dirichlet(torch.full((num_legal,), alpha)).sample().to(device)
+        p_vec = ((1 - epsilon) * p_vec) + (epsilon * noise)
+
+    for move, p_val in zip(node.state.legal_moves, p_vec):
+        next_state = deepcopy(node.state)
+        next_state.push(move)
+        next_state = next_state.mirror()
+        new_node = Node(
+            state=next_state,
+            observation_tensor=new_observation,
+            parent=node,
+            prior=p_val.item()
+        )
+        node.children[move.uci()] = new_node
+
+    # d) Backup - Propagate the value estimate up the tree
+    return backup(node, net_v)
+
 
 # conduct Monte Carlo Tree Search for sims sims and the python-chess state
 # using network net and temperature tau
@@ -205,7 +183,7 @@ def mcts(
 
     # expand tree with num_threads threads
     with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
-        futures = [executor.submit(expand, root, net, device, 0, verbose, c_puct) for _ in range(sims)]
+        futures = [executor.submit(simulate, root, net, device, 0, verbose, c_puct) for _ in range(sims)]
         _ = [f.result() for f in futures]
 
     # construct pi from root node and given tau value
