@@ -36,7 +36,7 @@ if __name__ == '__main__':
     pretrained_net = DemoNet(num_res_blocks=13)
     pretrained_net.to(device)
     # get dataloaders for each split
-    train_dataloader, valid_dataloader = get_dataloaders(batch_size = 64)
+    train_dataloader, valid_dataloader = get_dataloaders(batch_size = 128)
     # optimizer and loss
     optim = torch.optim.Adam(pretrained_net.parameters(), lr=0.001, weight_decay=1e-1)
 
@@ -52,7 +52,7 @@ if __name__ == '__main__':
         # train
         running_loss = 0.0
         progress_bar = tqdm(enumerate(train_dataloader), total=len(train_dataloader))
-        for batch_index, (state, policy, reward, _, _) in progress_bar:
+        for batch_index, (state, policy, reward) in progress_bar:
             state_batch = state.to(device)
             policy_batch = policy.to(device)
             reward_batch = reward.to(device)

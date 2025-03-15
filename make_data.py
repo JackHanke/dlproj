@@ -1,14 +1,12 @@
 import torch
-import logging
 import time
 import pickle
 from tqdm import tqdm 
+import gc
 from copy import deepcopy
 from utils.agent import Agent, Stockfish
 from utils.memory import ReplayMemory
 from pettingzoo.classic import chess_v6
-
-logger = logging.getLogger(__name__)
 
 def stockfish_starter(
         challenger_agent: Agent, 
@@ -26,16 +24,23 @@ def stockfish_starter(
     challenger_agent_wins = 0
     draws = 0
     current_best_agent_wins = 0
+
     training_data = []
+
+    books = 0
 
     # Use a tqdm progress bar for the games
     for game_idx in range(1, num_games+1):
+
+        if len(training_data) >= 50000:
+            training_data = [] # flush data
+            gc.collect()
+            books +=1 #increment pickle file
 
         game_states = []
         move_policies = []
         players = []
 
-        logger.debug(f'Starting game #{game_idx}')
         env.reset()
 
         # Assign agents based on game index (alternate colors)
@@ -44,16 +49,13 @@ def stockfish_starter(
             "player_1": current_best_agent
         }
 
-        logger.debug(f'{player_to_agent["player_0"].version} vs. {player_to_agent["player_1"].version}')
-        # print(f'{player_to_agent["player_0"].version} vs. {player_to_agent["player_1"].version}')
-
         winning_player = None
 
         # Use a tqdm progress bar for moves within the game
         move_bar = tqdm(range(1, max_moves + 1), desc=f"Game {game_idx} moves", leave=True)
         for move_idx in move_bar:
             current_player = env.agent_selection
-            move_bar.set_description(f"Evaluator, Game {game_idx}: Move {move_idx} by Player {current_player}.")
+            move_bar.set_description(f"Game {game_idx}, Move {move_idx}")
             observation, reward, termination, truncation, info = env.last()
 
             # Check for game termination
@@ -62,13 +64,11 @@ def stockfish_starter(
                 game_result = reward
                 last_player = player_to_int[current_player]
                 winning_player = game_result * last_player
-                logger.debug(f"Game terminated for {current_player} at move {move_idx}. {winning_player} is the winner. Reward = {reward}, Last Player = {last_player}, is truncated: {truncation}")
                 break
 
             if truncation:
                 winning_player = 0
                 last_player = player_to_int[current_player]
-                logger.debug(f"Game truncated for {current_player} at move {move_idx}. {winning_player} is the winner. Reward = {reward}, Last Player = {last_player}")
                 break
 
             state = observation['observation']
@@ -91,28 +91,11 @@ def stockfish_starter(
             move_policies.append(pi)
             players.append(torch.tensor([player_to_int[current_player]]))
 
-
             env.step(selected_move)
 
         # If no termination or resignation occurred, consider the game a draw.
         if winning_player is None:
             winning_player = 0
-
-        # Update win counts based on agent colors
-        if (game_idx % 2) == 0:  # Challenger is white
-            if winning_player == 1:
-                challenger_agent_wins += 1
-            elif winning_player == -1:
-                current_best_agent_wins += 1
-            else:
-                draws += 1
-        else:  # Challenger is black
-            if winning_player == -1:
-                challenger_agent_wins += 1
-            elif winning_player == 1:
-                current_best_agent_wins += 1
-            else:
-                draws += 1
 
         for state, policy, player in zip(game_states, move_policies, players):
             single_push_start_time = time.time()
@@ -127,23 +110,21 @@ def stockfish_starter(
                 (
                     state.float().permute(2, 0, 1), 
                     policy, 
-                    torch.tensor([adjusted_reward], dtype=torch.float)
-                    
+                    torch.tensor([adjusted_reward], dtype=torch.float),
+                    player,
+                    winning_player
                 )
             )  
 
-        print(f"Completed game {game_idx}/{num_games}")
-        # logger.debug(f"Completed game {game_idx}/{num_games}")
-
-        if (game_idx % 5) == 0:
-            with open(f'tests/stock_data.pkl', 'wb') as f:
+        if (game_idx % 25) == 0:
+            with open(f'tests/moves-{str(books)}.pkl', 'wb') as f:
                 pickle.dump(training_data, f)
 
 
 if __name__ == '__main__':
     stockfish_level = 0
-    stockfish_0 = Stockfish(level=stockfish_level, move_time=0.2)
-    stockfish_1 = Stockfish(level=stockfish_level, move_time=0.2)
+    stockfish_0 = Stockfish(level=stockfish_level, move_time=0.1)
+    stockfish_1 = Stockfish(level=stockfish_level, move_time=0.1)
 
     start = time.time()
     stockfish_starter(
@@ -151,10 +132,10 @@ if __name__ == '__main__':
         current_best_agent = stockfish_1, 
         device = 'cpu',
         max_moves = 250,
-        num_games = 9999 
+        num_games = 9999
     ) # ahhh
 
-    with open(f'tests/stock_data.pkl', 'rb') as f:
+    with open(f'tests/moves-0.pkl', 'rb') as f:
         training_data = pickle.load(f)
 
     print(f'Created {len(training_data)} datapoints for training in {time.time()-start} s')
