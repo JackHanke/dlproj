@@ -10,15 +10,16 @@ if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # get pretrained network
-    pretrained_net = DemoNet(num_res_blocks=10)
+    pretrained_net = DemoNet(num_res_blocks=13)
     pretrained_net.load_state_dict(torch.load(f'tests/pretrained_model.pth', weights_only=True))
+    pretrained_net.to(device)
     pretrained_net.eval()
 
     # NOTE training for sims=2 is equivalent to not using MCTS, can be used to further baseline
     pretrained_agent = Agent(
         version = 0, 
         network=pretrained_net,
-        sims=100
+        sims=2
     )
     stockfish_level = 0
     stockfish = Stockfish(level=stockfish_level, move_time=0.2)

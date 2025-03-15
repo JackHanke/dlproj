@@ -33,12 +33,12 @@ if __name__ == '__main__':
     torch.manual_seed(0)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    pretrained_net = DemoNet(num_res_blocks=10)
+    pretrained_net = DemoNet(num_res_blocks=13)
     pretrained_net.to(device)
     # get dataloaders for each split
     train_dataloader, valid_dataloader = get_dataloaders(batch_size = 64)
     # optimizer and loss
-    optim = torch.optim.Adam(pretrained_net.parameters())
+    optim = torch.optim.Adam(pretrained_net.parameters(), lr=0.001, weight_decay=1e-1)
 
     best_loss = float('inf')
     train_losses, valid_losses = [], []
@@ -46,7 +46,7 @@ if __name__ == '__main__':
     
     epoch = 1
     epochs_with_no_improvement = 0
-    while epochs_with_no_improvement <= 5:
+    while epochs_with_no_improvement <= 8:
         pretrained_net.train()
         
         # train
@@ -60,6 +60,7 @@ if __name__ == '__main__':
             optim.zero_grad()
             # get prediction and hidden state from RNN 
             policy_out, value_out = pretrained_net(state_batch)
+
             # loss calc
             train_loss = combined_loss(
                 pi=policy_batch, 
