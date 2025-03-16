@@ -1,10 +1,33 @@
 import torch
 import pickle
+import chess
+import time
+
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from torch.utils.data import Dataset, DataLoader
+
 from utils.networks import DemoNet
 from utils.losses import combined_loss
+from utils.chess_utils_local import get_observation
+from utils.utils import prepare_state_for_net
+
+# expands data for input into network
+def expand_data(state, policy, reward):
+    # start = time.time()
+    state_batch = []
+    for state_str in state:
+        state_board = chess.Board.from_epd(state_str)[0]
+        state_tensor = get_observation(orig_board=state_board, player=0)
+        state_tensor = torch.tensor(state_tensor.copy()).float().permute(2, 0, 1)
+        state_batch.append(state_tensor)
+    state_batch = torch.stack(state_batch, dim=0)
+    state_batch = torch.cat([state_batch, torch.zeros(state_batch.shape[0],91,8,8)], dim=1)
+
+    policy_batch = torch.nn.functional.one_hot(policy, num_classes=4672).float()
+    reward_batch = reward.float().unsqueeze(1)
+    # print(f'Time to expand: {time.time()-start} s')
+    return state_batch, policy_batch, reward_batch
 
 class MovesDataSet(Dataset):
     def __init__(self, move_list):
@@ -16,12 +39,12 @@ class MovesDataSet(Dataset):
 
 def get_dataloaders(batch_size):
     # read in data, tokenize and make dataloaders
-    with open('tests/moves.train.pkl', 'rb') as f:
+    with open('data/moves-str.train.pkl', 'rb') as f:
         train_list = pickle.load(f)
         train_dataset = MovesDataSet(move_list=train_list)
         train_dataloader = DataLoader(dataset=train_dataset, batch_size = batch_size, shuffle=True)
 
-    with open('tests/moves.valid.pkl', 'rb') as f:
+    with open('data/moves-str.valid.pkl', 'rb') as f:
         valid_list = pickle.load(f)
         valid_dataset = MovesDataSet(move_list=valid_list)
         valid_dataloader = DataLoader(dataset=valid_dataset, batch_size = batch_size, shuffle=False)
@@ -33,12 +56,16 @@ if __name__ == '__main__':
     torch.manual_seed(0)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    pretrained_net = DemoNet(num_res_blocks=13)
+    pretrained_net = DemoNet(num_res_blocks=5)
     pretrained_net.to(device)
     # get dataloaders for each split
     train_dataloader, valid_dataloader = get_dataloaders(batch_size = 128)
     # optimizer and loss
-    optim = torch.optim.Adam(pretrained_net.parameters(), lr=0.001, weight_decay=1e-1)
+    optim = torch.optim.Adam(
+        pretrained_net.parameters(), 
+        lr=0.001, 
+        weight_decay=1e-4
+    )
 
     best_loss = float('inf')
     train_losses, valid_losses = [], []
@@ -46,16 +73,19 @@ if __name__ == '__main__':
     
     epoch = 1
     epochs_with_no_improvement = 0
-    while epochs_with_no_improvement <= 8:
+    while epochs_with_no_improvement <= 3:
         pretrained_net.train()
         
         # train
         running_loss = 0.0
         progress_bar = tqdm(enumerate(train_dataloader), total=len(train_dataloader))
         for batch_index, (state, policy, reward) in progress_bar:
-            state_batch = state.to(device)
-            policy_batch = policy.to(device)
-            reward_batch = reward.to(device)
+            # expand data for network
+            state_batch, policy_batch, reward_batch = expand_data(state=state, policy=policy, reward=reward)
+            # send to device
+            state_batch = state_batch.to(device)
+            policy_batch = policy_batch.to(device)
+            reward_batch = reward_batch.to(device)
             # zero gradients
             optim.zero_grad()
             # get prediction and hidden state from RNN 
@@ -86,10 +116,13 @@ if __name__ == '__main__':
             pretrained_net.eval()
             running_loss = 0.0
 
-            for batch_index, (state, policy, reward, _, _) in enumerate(valid_dataloader):
-                state_batch = state.to(device)
-                policy_batch = policy.to(device)
-                reward_batch = reward.to(device)
+            for batch_index, (state, policy, reward) in enumerate(valid_dataloader):
+                # expand data for network
+                state_batch, policy_batch, reward_batch = expand_data(state=state, policy=policy, reward=reward)
+                # send to device
+                state_batch = state_batch.to(device)
+                policy_batch = policy_batch.to(device)
+                reward_batch = reward_batch.to(device)
                 # val prediction
                 policy_out, value_out = pretrained_net(state_batch)
                 # loss calc

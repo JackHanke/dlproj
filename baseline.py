@@ -10,7 +10,7 @@ if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # get pretrained network
-    pretrained_net = DemoNet(num_res_blocks=13)
+    pretrained_net = DemoNet(num_res_blocks=5)
     pretrained_net.load_state_dict(torch.load(f'tests/pretrained_model.pth', weights_only=True))
     pretrained_net.to(device)
     pretrained_net.eval()
@@ -22,7 +22,7 @@ if __name__ == '__main__':
         sims=2
     )
     stockfish_level = 0
-    stockfish = Stockfish(level=stockfish_level, move_time=0.1)
+    stockfish = Stockfish(level=stockfish_level, move_time=0.05) # NOTE half time to training
     wins, draws, losses, win_percent, tot_games = evaluator(
         challenger_agent=pretrained_agent,
         current_best_agent=stockfish,
