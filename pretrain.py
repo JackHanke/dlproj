@@ -27,7 +27,7 @@ def train_val_split():
         with filepath.open('rb') as f:
             training_data += pickle.load(f)
         
-    train, valid = train_test_split(training_data, test_size=0.2)
+    train, valid = train_test_split(training_data, test_size=0.2, random_state=42)
     print(f'Length of train: {len(train)}, Length of validation: {len(valid)}')
     return train, valid
 
