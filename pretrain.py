@@ -4,62 +4,96 @@ import chess
 import time
 
 import matplotlib.pyplot as plt
-from tqdm import tqdm
+from tqdm.auto import tqdm
 from torch.utils.data import Dataset, DataLoader
 
 from utils.networks import DemoNet
 from utils.losses import combined_loss
 from utils.chess_utils_local import get_observation
-from utils.utils import prepare_state_for_net
+from utils.utils import prepare_state_for_net, observe
+from sklearn.model_selection import train_test_split
+import os
+from pathlib import Path
+
+
+def train_val_split():
+    training_data = []
+    folder_path = Path('data')
+    pickle_files = sorted(folder_path.glob("*.pkl"), key=lambda f: f.name)
+
+    for filepath in pickle_files:
+        i = str(filepath).split('-')[-1].removesuffix(".pkl")
+        print(f'Reading in data {i}')
+        with filepath.open('rb') as f:
+            training_data += pickle.load(f)
+        
+    train, valid = train_test_split(training_data, test_size=0.2)
+    print(f'Length of train: {len(train)}, Length of validation: {len(valid)}')
+    return train, valid
+
 
 # expands data for input into network
-def expand_data(state, policy, reward):
-    # start = time.time()
-    state_batch = []
-    for state_str in state:
-        state_board = chess.Board.from_epd(state_str)[0]
-        state_tensor = get_observation(orig_board=state_board, player=0)
-        state_tensor = torch.tensor(state_tensor.copy()).float().permute(2, 0, 1)
-        state_batch.append(state_tensor)
-    state_batch = torch.stack(state_batch, dim=0)
-    state_batch = torch.cat([state_batch, torch.zeros(state_batch.shape[0],91,8,8)], dim=1)
+# def expand_data(state, policy, reward):
+#     # start = time.time()
+#     state_batch = []
+#     for state_str in state:
+#         state_board = chess.Board.from_epd(state_str)[0]
+#         state_tensor = get_observation(orig_board=state_board, player=0)
+#         state_tensor = torch.tensor(state_tensor.copy()).float().permute(2, 0, 1)
+#         state_batch.append(state_tensor)
+#     state_batch = torch.stack(state_batch, dim=0)
+#     state_batch = torch.cat([state_batch, torch.zeros(state_batch.shape[0],91,8,8)], dim=1)
 
-    policy_batch = torch.nn.functional.one_hot(policy, num_classes=4672).float()
-    reward_batch = reward.float().unsqueeze(1)
-    # print(f'Time to expand: {time.time()-start} s')
-    return state_batch, policy_batch, reward_batch
+#     policy_batch = torch.nn.functional.one_hot(policy, num_classes=4672).float()
+#     reward_batch = reward.float().unsqueeze(1)
+#     # print(f'Time to expand: {time.time()-start} s')
+#     return state_batch, policy_batch, reward_batch
+
 
 class MovesDataSet(Dataset):
     def __init__(self, move_list):
         self.move_list = move_list
+
     def __len__(self):
         return len(self.move_list)
+    
     def __getitem__(self, idx):
-        return self.move_list[idx]
+        board, policy, z, player_string, bh = self.move_list[idx]
+        obs = observe(
+            board=board,
+            agent=player_string,
+            possible_agents=['player_0', 'player_1'],
+            board_history=bh,
+            agent_selection=player_string
+        )
+        state = obs['observation'].copy()
+        z = torch.tensor([z])
+        policy_vec = torch.zeros(4672).float()
+        policy_vec[policy] = 1.0
+        return prepare_state_for_net(state).squeeze(), (policy_vec, z)
 
-def get_dataloaders(batch_size):
+
+def get_dataloaders(train_list, valid_list, batch_size):
     # read in data, tokenize and make dataloaders
-    with open('data/moves-str.train.pkl', 'rb') as f:
-        train_list = pickle.load(f)
-        train_dataset = MovesDataSet(move_list=train_list)
-        train_dataloader = DataLoader(dataset=train_dataset, batch_size = batch_size, shuffle=True)
+    train_dataset = MovesDataSet(move_list=train_list)
+    train_dataloader = DataLoader(dataset=train_dataset, batch_size = batch_size, shuffle=True)
 
-    with open('data/moves-str.valid.pkl', 'rb') as f:
-        valid_list = pickle.load(f)
-        valid_dataset = MovesDataSet(move_list=valid_list)
-        valid_dataloader = DataLoader(dataset=valid_dataset, batch_size = batch_size, shuffle=False)
-
+    valid_dataset = MovesDataSet(move_list=valid_list)
+    valid_dataloader = DataLoader(dataset=valid_dataset, batch_size = batch_size, shuffle=False)
     return train_dataloader, valid_dataloader
 
 
 if __name__ == '__main__':
     torch.manual_seed(0)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"Using device: {device}")
 
-    pretrained_net = DemoNet(num_res_blocks=5)
+    pretrained_net = DemoNet(num_res_blocks=13)
     pretrained_net.to(device)
     # get dataloaders for each split
-    train_dataloader, valid_dataloader = get_dataloaders(batch_size = 128)
+    train_list, val_list = train_val_split()
+    train_ds = MovesDataSet(train_list)
+    train_dataloader, valid_dataloader = get_dataloaders(train_list=train_list, valid_list=val_list, batch_size = 128)
     # optimizer and loss
     optim = torch.optim.Adam(
         pretrained_net.parameters(), 
@@ -74,14 +108,13 @@ if __name__ == '__main__':
     epoch = 1
     epochs_with_no_improvement = 0
     while epochs_with_no_improvement <= 3:
+        print(f"Epoch {epoch}:")
         pretrained_net.train()
         
         # train
         running_loss = 0.0
         progress_bar = tqdm(enumerate(train_dataloader), total=len(train_dataloader))
-        for batch_index, (state, policy, reward) in progress_bar:
-            # expand data for network
-            state_batch, policy_batch, reward_batch = expand_data(state=state, policy=policy, reward=reward)
+        for batch_index, (state_batch, (policy_batch, reward_batch)) in progress_bar:
             # send to device
             state_batch = state_batch.to(device)
             policy_batch = policy_batch.to(device)
@@ -101,24 +134,23 @@ if __name__ == '__main__':
                 value_weight=1.0
             )
 
+
             running_loss += train_loss.item()
             average_loss = running_loss / (batch_index + 1)
+            progress_bar.set_description(f"Average Train Loss: {average_loss:.4f}")
             # backprop
             train_loss.backward()
             # update weights
             optim.step()
 
         train_losses.append(average_loss)
-        print(f'Average training loss at Epoch {epoch}: {average_loss}')
 
         # validation
         with torch.no_grad():
             pretrained_net.eval()
             running_loss = 0.0
 
-            for batch_index, (state, policy, reward) in enumerate(valid_dataloader):
-                # expand data for network
-                state_batch, policy_batch, reward_batch = expand_data(state=state, policy=policy, reward=reward)
+            for batch_index, (state_batch, (policy_batch, reward_batch)) in enumerate(valid_dataloader):
                 # send to device
                 state_batch = state_batch.to(device)
                 policy_batch = policy_batch.to(device)
@@ -136,19 +168,21 @@ if __name__ == '__main__':
                 )
                 running_loss += valid_loss.item()
                 average_loss = running_loss / (batch_index + 1)
+                progress_bar.set_description(f"Average Train Loss: {average_loss:.4f}")
             # add loss for logging
             valid_losses.append(average_loss)
-            print(f'Average validation loss at Epoch {epoch}: {average_loss}')
 
         # save weights if validation performance is better        
         if average_loss < best_loss:
             best_loss = average_loss
             torch.save(pretrained_net.state_dict(), f'tests/pretrained_model.pth')
             print(' > Model saved!')
+            epochs_with_no_improvement = 0
         else:
             epochs_with_no_improvement += 1
 
         epoch += 1
+        print('\n')
 
     plt.plot([i+1 for i in range(len(train_losses))], train_losses, label='Training Loss')
     plt.plot([i+1 for i in range(len(valid_losses))], valid_losses, label='Validation Loss')
