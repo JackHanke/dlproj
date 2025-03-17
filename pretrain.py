@@ -150,7 +150,8 @@ if __name__ == '__main__':
             pretrained_net.eval()
             running_loss = 0.0
 
-            for batch_index, (state_batch, (policy_batch, reward_batch)) in enumerate(valid_dataloader):
+            progress_bar = tqdm(enumerate(valid_dataloader), total=len(valid_dataloader))
+            for batch_index, (state_batch, (policy_batch, reward_batch)) in progress_bar:
                 # send to device
                 state_batch = state_batch.to(device)
                 policy_batch = policy_batch.to(device)
@@ -168,7 +169,7 @@ if __name__ == '__main__':
                 )
                 running_loss += valid_loss.item()
                 average_loss = running_loss / (batch_index + 1)
-                progress_bar.set_description(f"Average Train Loss: {average_loss:.4f}")
+                progress_bar.set_description(f"Average Val Loss: {average_loss:.4f}")
             # add loss for logging
             valid_losses.append(average_loss)
 

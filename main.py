@@ -32,7 +32,7 @@ def training_loop(stop_event, memory, network, device, optimizer_params, counter
     )
     
     i = 0
-    while not stop_event.is_set() or i == 10:
+    while not stop_event.is_set():
         train_on_batch(
             data=memory,
             network=network,
@@ -66,7 +66,8 @@ def main(mp_training: bool):
         
     checkpoint = Checkpoint(verbose=True, compute_elo=False)
     
-    current_best_network = DemoNet(num_res_blocks=5).to(device)
+    current_best_network = DemoNet(num_res_blocks=13).to(device)
+    current_best_network.load_state_dict(torch.load("tests/pretrained_model.pth"))
     challenger_network = deepcopy(current_best_network).to(device)
 
     base_path = "checkpoints/best_model/"
@@ -202,11 +203,10 @@ def main(mp_training: bool):
         )
 
         i += 1
-        logger.info(f'Full iteration completed in {round(time.time()-start, 2)} s.')
     
     stockfish.engine.close()
 
 if __name__ == "__main__":
     with Timer():
         mp.set_start_method("spawn")  
-        main(mp_training=False)
+        main(mp_training=True)
