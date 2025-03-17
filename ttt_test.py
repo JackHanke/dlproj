@@ -101,12 +101,12 @@ def test(verbose=False):
     total_params = sum(p.numel() for p in net.parameters())
     print(f"Number of parameters: {total_params}")
 
-    agent_1 = Agent(
-        version=0,
-        network=net,
-        sims=15
-    )
-    # agent_1 = PerfectAgent()
+    # agent_1 = Agent(
+    #     version=0,
+    #     network=net,
+    #     sims=15
+    # )
+    agent_1 = PerfectAgent()
     # agent_1 = RandomAgent()
     # agent_1 = Human()
 

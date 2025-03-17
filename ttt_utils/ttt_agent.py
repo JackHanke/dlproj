@@ -4,6 +4,7 @@ import chess.engine
 from sys import platform
 import time
 from copy import deepcopy
+import numpy as np
 
 # from utils.mcts import mcts
 # from utils.mcts_parallel import mcts
@@ -36,10 +37,15 @@ class Human:
             2 5 8
         '''
         print(diagram_str)
-        # TODO prevent type error ?
-        action = int(input('Enter action > '))
-        while observation['action_mask'][action] == 0:
-            action = int(input('Please enter legal action > '))
+        action = input('Enter action > ')
+        while True:
+            try:
+                action = int(action)
+                if observation['action_mask'][action] == 0: # if illegal action
+                    raise Exception
+                break
+            except:
+                action = input('Please enter legal action > ')
         return action, 0
 
 class PerfectAgent:
@@ -59,15 +65,20 @@ class PerfectAgent:
                 best_board = None
                 # for board in game.generate_all_moves(board, PLAYER2_PIECE_COLOR):
                 legal_moves = [i for i, mark in enumerate(board.squares) if mark == 0]
+                if depth_index == 0: boards = []
                 for move in legal_moves:
                     copy_board = deepcopy(board)
                     copy_board.play_turn(agent = 0, pos = move)
                     new_val, _ = min_val(copy_board, alpha, beta, depth_index=depth_index+1)
                     if new_val > v:
                         best_board = copy_board
+                        if depth_index == 0: boards.append(copy_board)
                         v = max(v, new_val)
+                    elif new_val == v and (depth_index == 0):
+                        boards.append(copy_board)
                     if v >= beta: return v, best_board
                     alpha = max(alpha, v)
+                if depth_index == 0: return v, np.random.choice(boards)
                 return v, best_board
 
             def min_val(board, alpha, beta, depth_index):
@@ -77,16 +88,20 @@ class PerfectAgent:
                 best_board = None
                 # for board in game.generate_all_moves(board, PLAYER1_PIECE_COLOR):
                 legal_moves = [i for i, mark in enumerate(board.squares) if mark == 0]
+                if depth_index == 0: boards = []
                 for move in legal_moves:
                     copy_board = deepcopy(board)
                     copy_board.play_turn(agent = 1, pos = move)
-                    # input(new_board.squares)
                     new_val, _ = max_val(copy_board, alpha, beta, depth_index=depth_index+1)
                     if new_val < v:
                         best_board = copy_board
+                        if depth_index == 0: boards.append(copy_board)
                         v = min(v, new_val)
+                    elif new_val == v and depth_index == 0:
+                        boards.append(copy_board)
                     if v <= alpha: return v, best_board
                     beta = min(beta, v)
+                if depth_index == 0: return v, np.random.choice(boards)
                 return v, best_board
 
             legal_moves = [i for i, mark in enumerate(board.squares) if mark == 0]
