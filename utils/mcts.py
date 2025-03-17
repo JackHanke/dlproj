@@ -16,6 +16,7 @@ from utils.utils import prepare_state_for_net, filter_legal_moves, filter_legal_
 # NOTE this code refers to a chess.Move and a UCI string as a 'move' while the action indexes provided by Pettingzoo as an 'action'
 # NOTE virtual loss is for high number of threads searching the same tree. currently is not implemented
 VIRTUAL_LOSS = 1
+POSSIBLE_AGENTS = ['player_0', 'player_1']
 
 # node of search tree
 class Node:

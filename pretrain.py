@@ -32,24 +32,6 @@ def train_val_split():
     return train, valid
 
 
-# expands data for input into network
-# def expand_data(state, policy, reward):
-#     # start = time.time()
-#     state_batch = []
-#     for state_str in state:
-#         state_board = chess.Board.from_epd(state_str)[0]
-#         state_tensor = get_observation(orig_board=state_board, player=0)
-#         state_tensor = torch.tensor(state_tensor.copy()).float().permute(2, 0, 1)
-#         state_batch.append(state_tensor)
-#     state_batch = torch.stack(state_batch, dim=0)
-#     state_batch = torch.cat([state_batch, torch.zeros(state_batch.shape[0],91,8,8)], dim=1)
-
-#     policy_batch = torch.nn.functional.one_hot(policy, num_classes=4672).float()
-#     reward_batch = reward.float().unsqueeze(1)
-#     # print(f'Time to expand: {time.time()-start} s')
-#     return state_batch, policy_batch, reward_batch
-
-
 class MovesDataSet(Dataset):
     def __init__(self, move_list):
         self.move_list = move_list
@@ -83,7 +65,8 @@ def get_dataloaders(train_list, valid_list, batch_size):
     return train_dataloader, valid_dataloader
 
 
-if __name__ == '__main__':
+
+def pretrain():
     torch.manual_seed(0)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
@@ -193,3 +176,44 @@ if __name__ == '__main__':
     plt.legend()
     plt.savefig(f'tests/learning_curve.png')
     plt.show()
+
+
+def evaluate():
+    torch.manual_seed(0)
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"Using device: {device}")
+
+    pretrained_net = DemoNet(num_res_blocks=13)
+    pretrained_net.to(device)
+    pretrained_net.load_state_dict(torch.load('tests/pretrained_model.pth', map_location=device))
+    # get dataloaders for each split
+    train_list, val_list = train_val_split()
+    _, valid_dataloader = get_dataloaders(train_list=train_list, valid_list=val_list, batch_size = 128)
+    with torch.no_grad():
+        pretrained_net.eval()
+        running_loss = 0.0
+
+        progress_bar = tqdm(enumerate(valid_dataloader), total=len(valid_dataloader))
+        for batch_index, (state_batch, (policy_batch, reward_batch)) in progress_bar:
+            # send to device
+            state_batch = state_batch.to(device)
+            policy_batch = policy_batch.to(device)
+            reward_batch = reward_batch.to(device)
+            # val prediction
+            policy_out, value_out = pretrained_net(state_batch)
+            # loss calc
+            valid_loss = combined_loss(
+                pi=policy_batch, 
+                p_theta_logits=policy_out, 
+                z=reward_batch, 
+                v_theta=value_out, 
+                policy_weight=1.0, 
+                value_weight=1.0
+            )
+            running_loss += valid_loss.item()
+            average_loss = running_loss / (batch_index + 1)
+            progress_bar.set_description(f"Average Val Loss: {average_loss:.4f}")
+    
+
+if __name__ == '__main__':
+    evaluate()
