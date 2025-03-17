@@ -1,8 +1,9 @@
 import numpy as np
 import chess
 from pettingzoo.classic import chess_v6
-from utils.chess_utils_local import get_action_mask, get_observation, legal_moves as legal_moves_func
+from utils.chess_utils_local import get_action_mask, get_observation, legal_moves as legal_moves_func, action_to_move
 from utils.utils import observe
+from copy import deepcopy
 
 
 def compare_observations():
@@ -23,7 +24,8 @@ def compare_observations():
         pettingzoo_action_mask = obs["action_mask"]
 
         # Get the board state from PettingZoo
-        board = env.board
+        board = deepcopy(env.board)
+        current_player = env.agents.index(deepcopy(env.agent_selection))
 
         # Generate observation using your function
         obs = observe(board=board, agent=env.agent_selection, agent_selection=env.agent_selection ,possible_agents=env.possible_agents, board_history=board_history)
@@ -40,14 +42,15 @@ def compare_observations():
         else:
             print("❌ Observations or action masks do not match!")
             
-        print((my_obs_array == pettingzoo_obs_array).mean())
-
         if truncation or termination:
-             print(f"We got {i}/{correct} correct.")
+             print(f"We got {correct}/{i} correct.")
              break
         actions = np.where(obs['action_mask'])[0]
         action = np.random.choice(actions)
         env.step(action)
+        move = action_to_move(board=board, action=action, player=current_player)
+        print(move)
+        board.push(move)
         next_board = get_observation(board, player=0)
         board_history = np.dstack(
             (next_board[:, :, 7:], board_history[:, :, :-13])
