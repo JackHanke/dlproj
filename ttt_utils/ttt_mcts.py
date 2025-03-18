@@ -84,7 +84,7 @@ def backup(node: Node, v: float = 0.0):
             node.n += 1
             node.w += v
             node.q = node.w / node.n
-            v = -v  
+            v = -v  # TODO double check this makes sense
             node = node.parent
 
 
@@ -96,8 +96,10 @@ def simulate(
         recursion_count: int = 0, 
         verbose: bool = False,
         c_puct: int = 3,
+        root_parity: int = 1
     ):
     
+    agent_index = int((len([i for i in node.state.squares if i == 0]) % 2) == 0) # if there are an odd number of spaces, player 1's turnj
     legal_moves = [i for i, mark in enumerate(node.state.squares) if mark == 0]
 
     # a) Selection - Traverse down the tree using UCB
@@ -118,31 +120,45 @@ def simulate(
                 selected_move = move
 
         next_node = node.children[selected_move]
-        return simulate(next_node, net, device, recursion_count+1, verbose, c_puct)
+        return simulate(
+            node = next_node, 
+            net = net, 
+            device = device, 
+            recursion_count = recursion_count+1, 
+            verbose = verbose, 
+            c_puct = c_puct,
+            root_parity=root_parity
+        )
 
     # b) Expansion - If at a leaf node, check if it's terminal or create children
     if node.state.check_game_over():
         # v = result_to_int(node.state.result(claim_draw=True))  # Terminal value
         winner = node.state.check_for_winner()
-        if winner == -1: v = 0
-        elif winner == 1: v = 1
-        elif winner == 2: v = -1
+        if winner == -1: v = 0   # draw
+        # elif winner == 1: v = 1  # 'x' wins
+        # elif winner == 2: v = -1 # 'o' wins
+        else: v = 1
         return backup(node, v)
 
     # c) Evaluation - Run network inference to get prior and value
-    agent_index = int((len([i for i in node.state.squares if i == 0]) % 2) == 1) # if there are an odd number of pieces, player 1's turnj
     new_observation = observe(board=node.state, agent_index=agent_index)
     state_tensor = prepare_state_for_net(new_observation['observation'].copy()).to(device)
+    # print(torch.tensor(new_observation['observation']).permute(2,1,0))
+    # print(state_tensor.shape)
+    # if recursion_count == 0: input(f'state tensor in mcts: {state_tensor[0]}')
     
     policy, net_v = net(state_tensor)
+    # NOTE net_v is the network saying "I am this confident in winning from this state "
     action_mask = torch.tensor(new_observation['action_mask'])
     p_vec = filter_legal_moves_and_renomalize(policy, action_mask)
 
     if recursion_count == 0:  # Add Dirichlet noise at root
         epsilon = 0.25
-        alpha = 0.03
+        # alpha = 0.03
+        alpha = 1.3
         num_legal = len(p_vec)
-        noise = torch.distributions.Dirichlet(torch.full(p_vec.shape, alpha)).sample().to(device)
+        m = torch.distributions.Dirichlet(torch.full((num_legal,), alpha))
+        noise = m.sample().unsqueeze(1).to(device)
         p_vec = ((1 - epsilon) * p_vec) + (epsilon * noise)
 
     for move, p_val in zip(legal_moves, p_vec):
@@ -156,8 +172,13 @@ def simulate(
         )
         node.children[move] = new_node
 
+    # who is the root of the search
+    # parity = 1 if (agent_index == 0) else -1
+
     # d) Backup - Propagate the value estimate up the tree
-    return backup(node, net_v)
+    return backup(node, net_v) 
+    # TODO do we need to know who is playing at the root node?
+    # TODO do we need to know who is currently playing?
 
 
 # conduct Monte Carlo Tree Search for sims sims and the python-chess state
@@ -179,10 +200,16 @@ def mcts(
         
     root = Node(state=state, observation_tensor=observation)
 
+    agent_index = int((len([i for i in root.state.squares if i == 0]) % 2) == 0)
+    root_parity = 1 if (agent_index == 0) else -1
+
     # expand tree with num_threads threads
-    with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
-        futures = [executor.submit(simulate, root, net, device, 0, verbose, c_puct) for _ in range(sims)]
-        _ = [f.result() for f in futures]
+    # with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
+    #     futures = [executor.submit(simulate, root, net, device, 0, verbose, c_puct) for _ in range(sims)]
+    #     _ = [f.result() for f in futures]
+
+    for _ in range(sims):
+        simulate(node=root, net=net, device=device, root_parity=root_parity)
 
     # construct pi from root node and given tau value
     pi = create_pi_vector(node=root, tau=tau)
