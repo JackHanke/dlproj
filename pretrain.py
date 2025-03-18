@@ -14,6 +14,7 @@ from utils.utils import prepare_state_for_net, observe
 from sklearn.model_selection import train_test_split
 import os
 from pathlib import Path
+from utils.training import Checkpoint
 
 
 def train_val_split():
@@ -45,8 +46,7 @@ class MovesDataSet(Dataset):
             board=board,
             agent=player_string,
             possible_agents=['player_0', 'player_1'],
-            board_history=bh,
-            agent_selection=player_string
+            board_history=bh
         )
         state = obs['observation'].copy()
         z = torch.tensor([z])
@@ -182,10 +182,12 @@ def evaluate():
     torch.manual_seed(0)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
+    client = Checkpoint(verbose=True, compute_elo=False)
+    state_dict = client.download_from_blob("checkpoints/pretrained_weights.pth", device=device, return_bytes=False)
 
     pretrained_net = DemoNet(num_res_blocks=13)
     pretrained_net.to(device)
-    pretrained_net.load_state_dict(torch.load('tests/pretrained_model.pth', map_location=device))
+    pretrained_net.load_state_dict(state_dict=state_dict)
     # get dataloaders for each split
     train_list, val_list = train_val_split()
     _, valid_dataloader = get_dataloaders(train_list=train_list, valid_list=val_list, batch_size = 128)

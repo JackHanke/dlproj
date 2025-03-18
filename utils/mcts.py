@@ -231,6 +231,7 @@ def mcts(
         verbose: bool = False,
         inference_mode: bool = False
     ):
+    net.to(device)
     board_history = np.zeros((8, 8, 104), dtype=bool)
     if node is None: # if there is no subtree given to traverse, initialize root
         # if state.turn:

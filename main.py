@@ -34,14 +34,17 @@ def training_loop(stop_event, memory, network, device, optimizer_params, counter
     
     i = 0
     while not stop_event.is_set():
-        train_on_batch(
+        r = train_on_batch(
             data=memory,
             network=network,
             batch_size=batch_size,
             device=device,
             optimizer=optimizer
         )
-        i += 1
+        if r:
+            i += 1
+        if r == 1:
+            logging.info('Training started!')
 
     counter.value = i  # Store the final value of i in the shared variable
     logging.info(f'Memory length after self play: {len(memory)}')
@@ -53,13 +56,16 @@ def main():
     logging.info(f'\n\nRunning Experiment on {datetime.now()} with the following configs:')
     # TODO add all configs to logging for this log
 
+    base_path = "checkpoints/best_model/"
+    weights_path = os.path.join(base_path, "weights.pth")
+    info_path = os.path.join(base_path, "info.json")
+    model_path = os.path.join(base_path, "model.pth")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     configs = load_config()
-    print("Device:", device)
+    print("Device for network training:", device)
 
     self_play_session = SelfPlaySession()
     memory = ReplayMemory(configs.training.data_buffer_size)
-    training_epochs_per_iter = 2
     optimizer_params = {
         "optimizer_name": configs.training.optimizer,
         "lr": configs.training.learning_rate.initial,
@@ -69,14 +75,19 @@ def main():
         
     checkpoint = Checkpoint(verbose=True, compute_elo=False)
     
-    current_best_network = DemoNet(num_res_blocks=configs.network.num_residual_blocks).to(device)
-    current_best_network.load_state_dict(torch.load("tests/pretrained_model.pth"))
-    challenger_network = deepcopy(current_best_network).to(device)
+    current_best_network = DemoNet(num_res_blocks=configs.network.num_residual_blocks)
 
-    base_path = "checkpoints/best_model/"
-    weights_path = os.path.join(base_path, "weights.pth")
-    info_path = os.path.join(base_path, "info.json")
-    model_path = os.path.join(base_path, "model.pth")
+    challenger_network = deepcopy(current_best_network)
+    # checkpoint.save_pretrained(state_dict=pretrained_weights)
+    if checkpoint.blob_exists('checkpoints/weights.pth'):
+        pretrained_weights = checkpoint.download_from_blob('checkpoints/weights.pth', return_bytes=False, device=device)
+        print(f"Loaded weights from blob path: checkpoints/weights.pth")
+    elif checkpoint.blob_exists('checkpoints/pretrained_weights.pth'):
+        pretrained_weights = checkpoint.download_from_blob('checkpoints/pretrained_weights.pth', return_bytes=False, device=device)
+        print(f"Loaded weights from blob path: checkpoints/pretrained_weights.pth")
+    else:
+        pretrained_weights = None
+        assert pretrained_weights
 
     stockfish_level = 0
     stockfish_progress = {0:[]}
@@ -112,7 +123,7 @@ def main():
         self_play_session.run_self_play(
             training_data=memory,
             network=current_best_network,
-            device=device,
+            device=torch.device('cpu'),
             n_sims=configs.self_play.num_simulations,
             num_games=configs.training.num_self_play_games,
             max_moves=300
@@ -148,7 +159,7 @@ def main():
         new_best_agent, wins, draws, losses, win_percent, tot_games = evaluator(
             challenger_agent=challenger_agent, 
             current_best_agent=current_best_agent,
-            device=device,
+            device=torch.device('cpu'),
             max_moves=300,
             num_games=configs.evaluation.tournament_games,
             v_resign=self_play_session.v_resign,
@@ -166,7 +177,7 @@ def main():
         wins, draws, losses, win_percent, tot_games = evaluator(
             challenger_agent=current_best_agent,
             current_best_agent=stockfish,
-            device=device,
+            device=torch.device('cpu'),
             max_moves=300,
             num_games=configs.evaluation.tournament_games,
             v_resign=self_play_session.v_resign
