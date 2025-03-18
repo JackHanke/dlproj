@@ -74,8 +74,8 @@ class SelfPlaySession:
             max_moves (int): Maximum number of moves per game before termination.
         """
 
-        env = chess_v6.env(render_mode='human')  
-        # env = chess_v6.env(render_mode=None)  
+        # env = chess_v6.env(render_mode='human')  
+        env = chess_v6.env(render_mode=None)  
 
         player_to_int = {
             "player_0": 1,
@@ -99,6 +99,7 @@ class SelfPlaySession:
             for move_idx in move_bar:
                 current_player = env.agent_selection
                 observation, reward, termination, truncation, info = env.last()
+                assert reward == env.rewards[current_player]
                 move_bar.set_description(f"SelfPlay, Game {game_idx}: Move {move_idx} by Player {current_player}.")
 
                 # Check for game termination
@@ -122,7 +123,7 @@ class SelfPlaySession:
                 # Run MCTS 
                 pi, v, selected_move, _ = mcts(
                     state=deepcopy(env.board), 
-                    observation=state,
+                    starting_agent=current_player,
                     net=network, 
                     device=device, 
                     tau=tau, 

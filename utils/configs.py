@@ -35,12 +35,6 @@ class NetworkConfig:
 
 
 @dataclass
-class ExplorationNoiseConfig:
-    epsilon: float
-    alpha: float
-
-
-@dataclass
 class TemperatureConfig:
     initial_moves: int
 
@@ -105,7 +99,6 @@ def load_config(file_path: str = 'config.yaml') -> Config:
         network=NetworkConfig(**raw_config["network"]),
         self_play=SelfPlayConfig(
             num_simulations=raw_config["self_play"]["num_simulations"],
-            exploration_noise=ExplorationNoiseConfig(**raw_config["self_play"]["exploration_noise"]),
             temperature=TemperatureConfig(**raw_config["self_play"]["temperature"]),
             resign_threshold=raw_config["self_play"]["resign_threshold"],
             disable_resignation_fraction=raw_config["self_play"]["disable_resignation_fraction"],

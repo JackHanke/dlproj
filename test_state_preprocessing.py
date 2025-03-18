@@ -28,9 +28,9 @@ def compare_observations():
         current_player = env.agents.index(deepcopy(env.agent_selection))
 
         # Generate observation using your function
-        obs = observe(board=board, agent=env.agent_selection, agent_selection=env.agent_selection ,possible_agents=env.possible_agents, board_history=board_history)
-        my_obs_array = obs['observation']
-        my_action_mask = obs['action_mask']
+        my_obs = observe(board=board, agent=env.agent_selection, possible_agents=env.possible_agents, board_history=board_history)
+        my_obs_array = my_obs['observation']
+        my_action_mask = my_obs['action_mask']
 
         # Compare observations
         obs_equal = np.array_equal(my_obs_array, pettingzoo_obs_array)

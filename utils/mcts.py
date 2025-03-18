@@ -9,26 +9,29 @@ import concurrent.futures
 import gc
 from copy import deepcopy
 
-from utils.chess_utils_local import get_observation, legal_moves, result_to_int, get_action_mask, actions_to_moves, moves_to_actions
-from utils.utils import prepare_state_for_net, filter_legal_moves, filter_legal_moves_and_renomalize, renormalize_network_output, rand_argmax
+from utils.chess_utils_local import get_observation, legal_moves, result_to_int, get_action_mask, actions_to_moves, moves_to_actions, mirror_move
+from utils.utils import prepare_state_for_net, filter_legal_moves, filter_legal_moves_and_renomalize, renormalize_network_output, rand_argmax, observe
 
 # NOTE This implementation mirrors all black boards to be consistent with how the PettingZoo source interacts with python-chess
 # NOTE this code refers to a chess.Move and a UCI string as a 'move' while the action indexes provided by Pettingzoo as an 'action'
 # NOTE virtual loss is for high number of threads searching the same tree. currently is not implemented
 VIRTUAL_LOSS = 1
 POSSIBLE_AGENTS = ['player_0', 'player_1']
+NODE_LOCK = threading.Lock()
 
 # node of search tree
 class Node:
     def __init__(
             self, 
             state: chess.Board, 
-            observation_tensor: torch.tensor,
+            board_history: torch.tensor,
+            agent: str,
             parent = None, 
             prior: float = 0.0
         ):
         self.state = state # python-chess board object
-        self.observation_tensor = observation_tensor # PettingZoo friendly representation, tracked for board history
+        self.agent = agent
+        self.board_history = board_history # board history
         self.parent = parent # parent node of Node, None if root Node
         self.children = {} # dictionary of {chess.Move: child_Node}
         self.n = 0 # number of times Node has been visited
@@ -38,28 +41,55 @@ class Node:
         self.p = prior # prior from network
 
 # creates the final pi tensor (same size as network output)
+# def create_pi_vector(node: Node, tau: float):
+#     pi = [0 for _ in range(4672)]
+
+#     if tau == 0: # if tau ==0, find action with highest visit count, create 1-hot pi
+#         highest_n, most_visited_action = 0, None
+#         for move, child in node.children.items():
+#             action = moves_to_actions[move]
+#             if child.n > highest_n:
+#                 highest_n = child.n
+#                 most_visited_action = action
+#         pi[most_visited_action] = 1
+#         pi = torch.tensor(pi)
+#         return pi
+
+#     # else construct a distribution including illegal moves with zero probability
+#     pi_denom = sum([child.n**(1/tau) for child in node.children.values()])
+#     for move, child in node.children.items():
+#         action = moves_to_actions[move]
+#         val = (child.n ** (1/tau))/pi_denom
+#         pi[action] = val
+#     pi = torch.tensor(pi)
+#     return pi
+
 def create_pi_vector(node: Node, tau: float):
     pi = [0 for _ in range(4672)]
 
-    if tau == 0: # if tau ==0, find action with highest visit count, create 1-hot pi
+    if tau == 0:  # if tau == 0, find action with highest visit count, create 1-hot pi
         highest_n, most_visited_action = 0, None
         for move, child in node.children.items():
-            action = moves_to_actions[move]
+            # Mirror move if it's black's turn
+            mirrored_move = mirror_move(move) if node.state.turn == chess.BLACK else move
+            action = moves_to_actions[mirrored_move.uci()]
+
             if child.n > highest_n:
                 highest_n = child.n
                 most_visited_action = action
+        
         pi[most_visited_action] = 1
-        pi = torch.tensor(pi)
-        return pi
+        return torch.tensor(pi)
 
-    # else construct a distribution including illegal moves with zero probability
+    # Else construct a distribution including illegal moves with zero probability
     pi_denom = sum([child.n**(1/tau) for child in node.children.values()])
     for move, child in node.children.items():
-        action = moves_to_actions[move]
-        val = (child.n ** (1/tau))/pi_denom
+        mirrored_move = mirror_move(move) if node.state.turn == chess.BLACK else move
+        action = moves_to_actions[mirrored_move.uci()]
+        val = (child.n ** (1/tau)) / pi_denom
         pi[action] = val
-    pi = torch.tensor(pi)
-    return pi
+
+    return torch.tensor(pi)
 
 # compute if a board is in a terminal state (ripped from PettingZoo source)
 def is_game_over(board: chess.Board):
@@ -106,18 +136,30 @@ def simulate(
         selected_move = None
         n = node.n + 1e-6  # Avoid division by zero
 
-        for move in node.state.legal_moves:
-            child = node.children[move.uci()]
-            q = child.q
-            n_val = child.n
-            p = child.p
-            u = c_puct * np.sqrt(n) * p / (1 + n_val)  # UCB calculation
-            score = q + u
-            if score > best_score:
-                best_score = score
-                selected_move = move
+        with NODE_LOCK:  # Ensure no race conditions when reading children
+            if len(node.children) < node.state.legal_moves.count():  # Check if expansion is incomplete
+                print("Node expansion incomplete. Waiting for other threads.")
+                return simulate(node, net, device, recursion_count, verbose, c_puct)
 
-        next_node = node.children[selected_move.uci()]
+            for move in node.state.legal_moves:
+                if move not in node.children:
+                    logging.error(f"Move {move.uci()} should be in node.children but isn't!")
+                    continue  # This shouldn't happen anymore, but logging will help debug
+
+                child = node.children[move]
+                q = child.q
+                n_val = child.n
+                p = child.p
+                u = c_puct * np.sqrt(n) * p / (1 + n_val)  # UCB calculation
+                score = q + u
+                if score > best_score:
+                    best_score = score
+                    selected_move = move
+
+        if selected_move is None:
+            return backup(node, 0.0)  # No valid child found, back up with zero value
+
+        next_node = node.children[selected_move]
         return simulate(next_node, net, device, recursion_count+1, verbose, c_puct)
 
     # b) Expansion - If at a leaf node, check if it's terminal or create children
@@ -126,13 +168,19 @@ def simulate(
         return backup(node, v)
 
     # c) Evaluation - Run network inference to get prior and value
-    next_board = get_observation(node.state, player=0)  
-    new_observation = np.dstack((next_board[:, :, 7:], node.observation_tensor[:, :, :-13]))
+    # next_board = get_observation(node.state, player=0)  
+    # new_observation = np.dstack((next_board[:, :, 7:], node.observation_tensor[:, :, :-13]))
+    new_observation = observe(
+        board=node.state,
+        agent=node.agent,
+        possible_agents=POSSIBLE_AGENTS,
+        board_history=node.board_history
+    )['observation']
     state_tensor = prepare_state_for_net(new_observation.copy()).to(device)
     
     policy, net_v = net(state_tensor)
     action_mask = torch.tensor(get_action_mask(node.state))
-    p_vec = filter_legal_moves_and_renomalize(policy, action_mask)
+    p_vec = filter_legal_moves_and_renomalize(policy, action_mask).squeeze(-1)
 
     if recursion_count == 0:  # Add Dirichlet noise at root
         epsilon = 0.25
@@ -141,44 +189,55 @@ def simulate(
         noise = torch.distributions.Dirichlet(torch.full((num_legal,), alpha)).sample().to(device)
         p_vec = ((1 - epsilon) * p_vec) + (epsilon * noise)
 
-    for move, p_val in zip(node.state.legal_moves, p_vec):
-        next_state = deepcopy(node.state)
-        next_state.push(move)
-        next_state = next_state.mirror()
-        new_node = Node(
-            state=next_state,
-            observation_tensor=new_observation,
-            parent=node,
-            prior=p_val.item()
-        )
-        node.children[move.uci()] = new_node
+    with NODE_LOCK:
+        if len(node.children) == 0:  # Ensure only one thread expands            
+            for move, p_val in zip(node.state.legal_moves, p_vec):
+                next_state = deepcopy(node.state)
+                next_state.push(move)
+                new_board = get_observation(next_state, player=0)
+                board_history = np.dstack(
+                    (new_board[:, :, 7:], node.board_history[:, :, :-13])
+                )
+                new_node = Node(
+                    state=next_state,
+                    board_history=board_history,
+                    agent=POSSIBLE_AGENTS[0] if node.agent == POSSIBLE_AGENTS[1] else POSSIBLE_AGENTS[1],
+                    parent=node,
+                    prior=p_val.item()
+                )
 
-    # d) Backup - Propagate the value estimate up the tree
+                if move in node.children:
+                    logging.error(f"Move {move.uci()} already exists in children! This should never happen.")
+                else:
+                    node.children[move] = new_node  # Add child safely
+
+
+    # Now every thread sees a fully expanded `node.children`, so we can back up values
     return backup(node, net_v)
-
 
 # conduct Monte Carlo Tree Search for sims sims and the python-chess state
 # using network net and temperature tau
 @torch.no_grad()
 def mcts(
         state: chess.Board, 
-        observation: torch.tensor,
+        starting_agent: str,
         net: torch.nn.Module, 
         tau: int, 
         node: Node = None,
         c_puct: int = 3,
         sims: int = 1, 
-        num_threads: int = 1,
+        num_threads: int = 4,
         device: torch.device = None, 
         verbose: bool = False,
         inference_mode: bool = False
     ):
-        
+    board_history = np.zeros((8, 8, 104), dtype=bool)
     if node is None: # if there is no subtree given to traverse, initialize root
-        if state.turn:
-            root = Node(state=state, observation_tensor=observation)
-        if not state.turn: # if black's turn, we mirror the board to allow for easier translation of moes to actions
-            root = Node(state=state.mirror(), observation_tensor=observation)
+        # if state.turn:
+        #     root = Node(state=state, board_history=board_history, agent=starting_agent)
+        # if not state.turn: # if black's turn, we mirror the board to allow for easier translation of moes to actions
+        #     root = Node(state=state.mirror(), board_history=board_history, agent=starting_agent)
+        root = Node(state=state, board_history=board_history, agent=starting_agent)
     else: # else provided node is the root of the tree
         root = node 
 
@@ -194,9 +253,11 @@ def mcts(
     # create pi distribution
     m = Categorical(pi)
     # if inference, just pick the best move
-    if inference_mode: sampled_action = int(pi.argmax(-1).item())
+    if inference_mode: 
+        sampled_action = int(pi.argmax(-1).item())
     # if not, sample from pi
-    else: sampled_action = int(m.sample().item())
+    else: 
+        sampled_action = int(m.sample().item())
 
     sub_tree = None
     root = None # dereference root for memory management

@@ -17,7 +17,8 @@ class Timer(ContextDecorator):
         print(f"Execution time: {elapsed_time:.6f} seconds")
 
 
-def observe(board, agent, possible_agents, board_history, agent_selection):
+def observe(board, agent, possible_agents, board_history):
+    agent_selection = agent
     current_index = possible_agents.index(agent)
 
     observation = get_observation(board, current_index)

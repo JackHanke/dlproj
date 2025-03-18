@@ -23,6 +23,42 @@ from utils.utils import Timer
 
 # NOTE this file tests interaction with the PettingZoo Chess environment
 
+import torch
+from pettingzoo.classic import chess_v6
+from tqdm import tqdm
+
+def play_chess_game():
+    env = chess_v6.env(render_mode=None)  # No GUI rendering
+    env.reset()
+
+    player_to_int = {"player_0": 1, "player_1": -1}
+    move_bar = tqdm(range(1, 10000), desc="Playing Chess Moves", leave=True)
+
+    print("\nMove | Current Player | Reward from env.last() | Reward from env.rewards[current_player] | Difference")
+    print("-" * 100)
+
+    while True:
+        current_player = env.agent_selection  # Get the player whose turn it is
+        observation, reward_last, termination, truncation, info = env.last()  # Reward from previous agent's action
+        reward_current = env.rewards[current_player] # Reward stored for the current player
+        other_player_reward = env.rewards[env.possible_agents[0] if env.agent_selection == env.possible_agents[1] else env.possible_agents[1]]
+
+        # Print the difference between reward sources
+        print(f"{current_player:14} | {reward_last:23} | {reward_current:41} | {reward_last - reward_current} | {other_player_reward}")
+
+        # If the game is over, exit the loop
+        if termination or truncation:
+            if termination: print('Terminated')
+            if truncation: print('Truncation')
+            break
+
+        # Make a random move (replace this with AI logic if needed)
+        action_mask = observation['action_mask']
+        action = env.action_space(current_player).sample(action_mask)
+        env.step(action=action)
+
+    print("\nGame Over!")
+
 
 def test_self_play():
     network = DemoNet(num_res_blocks=1)
@@ -152,7 +188,7 @@ def test(verbose=False):
     print(f'Average MCTS (sims: {sims} threads: {num_threads}) time: {sum(times)/len(times)} s')
 
 if __name__ == '__main__':
-    test(verbose=False)
+    play_chess_game()
     # test_mcts_parallel()
     # agent_1 = Agent(version=1, network=DemoNet(num_res_blocks=1))
     # agent_2 = Agent(version=2, network=DemoNet(num_res_blocks=1))

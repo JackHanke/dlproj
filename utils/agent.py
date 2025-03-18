@@ -15,13 +15,13 @@ class Agent:
         self.sims = sims
         self.node_cache = None
 
-    def inference(self, board_state: chess.Board, observation: torch.tensor, device: torch.device, tau: float = 0) -> tuple[int, float]:
+    def inference(self, board_state: chess.Board, starting_agent: str, device: torch.device, tau: float = 0) -> tuple[int, float]:
         # get node cache
         root = None
 
         _, value, action, subtree_node = mcts(
             state=board_state, 
-            observation=observation,
+            starting_agent=starting_agent,
             net=self.network, 
             node=root,
             device=device, 
@@ -53,7 +53,7 @@ class Stockfish:
         self.engine = chess.engine.SimpleEngine.popen_uci(stock_path)
         self.engine.configure({"Skill Level": self.level})
 
-    def inference(self, board_state: chess.Board, observation: torch.tensor, device: torch.device, tau: float = 1):
+    def inference(self, board_state: chess.Board, starting_agent: str, device: torch.device, tau: float = 1):
         # fuck you PettingZoo
         if board_state.turn: # it white's turn
             uci_move = str(self.engine.play(board_state, chess.engine.Limit(time=self.move_time)).move)

@@ -19,9 +19,9 @@ def evaluator(
     ) -> Agent:
     # watch external evaluation
     if current_best_agent.version == 'Stockfish':
-        env = chess_v6.env(render_mode='human')  
+        env = chess_v6.env(render_mode=None)  
     else:
-        env = chess_v6.env(render_mode='human')  
+        env = chess_v6.env(render_mode=None)  
         # env = chess_v6.env(render_mode=None)  
 
     # env = chess_v6.env()
@@ -82,7 +82,7 @@ def evaluator(
 
             tau = 0  # No exploration during evaluation
             agent = player_to_agent[current_player]
-            selected_move, v = agent.inference(board_state=deepcopy(env.board), observation=observation['observation'], device=device, tau=tau)
+            selected_move, v = agent.inference(board_state=deepcopy(env.board), starting_agent=current_player, device=device, tau=tau)
 
             # Resignation logic
             if move_idx > 10 and v < v_resign:

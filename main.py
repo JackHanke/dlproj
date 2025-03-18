@@ -16,6 +16,7 @@ from utils.optimizer import get_optimizer
 from utils.evaluator import evaluator
 from utils.agent import Agent, Stockfish
 from utils.utils import Timer
+from utils.configs import load_config
 
 
 def training_loop(stop_event, memory, network, device, optimizer_params, counter):
@@ -53,6 +54,7 @@ def main(mp_training: bool):
     # TODO add all configs to logging for this log
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    configs = load_config()
 
     self_play_session = SelfPlaySession()
     memory = ReplayMemory(10000)
@@ -67,7 +69,7 @@ def main(mp_training: bool):
     checkpoint = Checkpoint(verbose=True, compute_elo=False)
     
     current_best_network = DemoNet(num_res_blocks=13).to(device)
-    current_best_network.load_state_dict(torch.load("tests/pretrained_model.pth"))
+    current_best_network.load_state_dict(torch.load("tests/pretrained_model.pth", map_location=device))
     challenger_network = deepcopy(current_best_network).to(device)
 
     base_path = "checkpoints/best_model/"
@@ -112,7 +114,7 @@ def main(mp_training: bool):
             network=current_best_network,
             device=device,
             n_sims=80,
-            num_games=12,
+            num_games=3,
             max_moves=250
         )
 
