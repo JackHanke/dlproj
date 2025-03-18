@@ -19,7 +19,7 @@ from utils.utils import Timer
 from utils.configs import load_config
 
 
-def training_loop(stop_event, memory, network, device, optimizer_params, counter):
+def training_loop(stop_event, memory, network, device, optimizer_params, counter, batch_size):
     """
     Continuously train on a batch until stop_event is set.
     The optimizer is created inside the child process using optimizer_params.
@@ -37,7 +37,7 @@ def training_loop(stop_event, memory, network, device, optimizer_params, counter
         train_on_batch(
             data=memory,
             network=network,
-            batch_size=32,
+            batch_size=batch_size,
             device=device,
             optimizer=optimizer
         )
@@ -47,7 +47,7 @@ def training_loop(stop_event, memory, network, device, optimizer_params, counter
     logging.info(f'Memory length after self play: {len(memory)}')
 
 # mp_training is whether or not to use multiprocessing training to run while self-play runs
-def main(mp_training: bool):
+def main():
     logger = logging.getLogger(__name__)
     logging.basicConfig(filename='dem0.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     logging.info(f'\n\nRunning Experiment on {datetime.now()} with the following configs:')
@@ -55,21 +55,22 @@ def main(mp_training: bool):
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     configs = load_config()
+    print("Device:", device)
 
     self_play_session = SelfPlaySession()
-    memory = ReplayMemory(10000)
+    memory = ReplayMemory(configs.training.data_buffer_size)
     training_epochs_per_iter = 2
     optimizer_params = {
-        "optimizer_name": "adam",
-        "lr": 0.0001,
-        "weight_decay": 1e-4,
-        "momentum": 0.9  
+        "optimizer_name": configs.training.optimizer,
+        "lr": configs.training.learning_rate.initial,
+        "weight_decay": configs.training.weight_decay,
+        "momentum": configs.training.momentum  
     }
         
     checkpoint = Checkpoint(verbose=True, compute_elo=False)
     
-    current_best_network = DemoNet(num_res_blocks=13).to(device)
-    current_best_network.load_state_dict(torch.load("tests/pretrained_model.pth", map_location=device))
+    current_best_network = DemoNet(num_res_blocks=configs.network.num_residual_blocks).to(device)
+    current_best_network.load_state_dict(torch.load("tests/pretrained_model.pth"))
     challenger_network = deepcopy(current_best_network).to(device)
 
     base_path = "checkpoints/best_model/"
@@ -90,57 +91,55 @@ def main(mp_training: bool):
         current_best_agent = Agent(
             version=current_best_version, 
             network=current_best_network, 
-            sims=80
+            sims=configs.self_play.num_simulations
         )
         challenger_agent = Agent(
             version=current_best_version+1, 
             network=challenger_network, 
-            sims=80
+            sims=configs.self_play.num_simulations
         )
         
         # NOTE multiprocessing code
-        if mp_training:
-            stop_event = mp.Event()
-            counter = mp.Value("i", 0)  # Shared integer for storing i
-            training_process = mp.Process(
-                target=training_loop,
-                args=(stop_event, memory, challenger_network, device, optimizer_params, counter)
-            )
-            training_process.start()
+        stop_event = mp.Event()
+        counter = mp.Value("i", 0)  # Shared integer for storing i
+        training_process = mp.Process(
+            target=training_loop,
+            args=(stop_event, memory, challenger_network, device, optimizer_params, counter, configs.training.batch_size)
+        )
+        training_process.start()
 
         # 
         self_play_session.run_self_play(
             training_data=memory,
             network=current_best_network,
             device=device,
-            n_sims=80,
-            num_games=3,
-            max_moves=250
+            n_sims=configs.self_play.num_simulations,
+            num_games=configs.training.num_self_play_games,
+            max_moves=300
         )
 
-        if not mp_training:
-            optimizer = get_optimizer(
-                optimizer_name=optimizer_params["optimizer_name"],
-                lr=optimizer_params["lr"],
-                weight_decay=optimizer_params["weight_decay"],
-                model=challenger_network,
-                momentum=optimizer_params.get("momentum", 0.0)
-            )
-            # NOTE still uses multiprocessing queue, see if this changes anything
-            train_bar = tqdm(range(1, training_epochs_per_iter+1))
-            for train_idx in train_bar:
-                train_on_batch(
-                    data=memory,
-                    network=challenger_network,
-                    batch_size=32,
-                    device=device,
-                    optimizer=optimizer
-                )
-                train_bar.set_description(f"Training, Epoch {train_idx}.")
+        # if not mp_training:
+        #     optimizer = get_optimizer(
+        #         optimizer_name=optimizer_params["optimizer_name"],
+        #         lr=optimizer_params["lr"],
+        #         weight_decay=optimizer_params["weight_decay"],
+        #         model=challenger_network,
+        #         momentum=optimizer_params.get("momentum", 0.0)
+        #     )
+        #     # NOTE still uses multiprocessing queue, see if this changes anything
+        #     train_bar = tqdm(range(1, training_epochs_per_iter+1))
+        #     for train_idx in train_bar:
+        #         train_on_batch(
+        #             data=memory,
+        #             network=challenger_network,
+        #             batch_size=configs.training.batch_size,
+        #             device=device,
+        #             optimizer=optimizer
+        #         )
+        #         train_bar.set_description(f"Training, Epoch {train_idx}.")
         
-        if mp_training:
-            stop_event.set()
-            training_process.join()
+        stop_event.set()
+        training_process.join()
         
         # print(f"\nTraining iterations completed: {counter.value}")  # Print the value of i
         logger.debug(f'Training iterations completed: {counter.value}')
@@ -150,9 +149,10 @@ def main(mp_training: bool):
             challenger_agent=challenger_agent, 
             current_best_agent=current_best_agent,
             device=device,
-            max_moves=110,
-            num_games=7,
-            v_resign=self_play_session.v_resign
+            max_moves=300,
+            num_games=configs.evaluation.tournament_games,
+            v_resign=self_play_session.v_resign,
+            win_threshold=configs.evaluation.evaluation_threshold
         )
         # print(f'After this loop, the best_agent is {current_best_agent.version}\n\n')
         logger.info(f'Agent {challenger_agent.version} playing Agent {current_best_agent.version}, won {wins} games, drew {draws} games, lost {losses} games. ({round(100*win_percent, 2)}% wins.)')
@@ -167,8 +167,8 @@ def main(mp_training: bool):
             challenger_agent=current_best_agent,
             current_best_agent=stockfish,
             device=device,
-            max_moves=100,
-            num_games=9,
+            max_moves=300,
+            num_games=configs.evaluation.tournament_games,
             v_resign=self_play_session.v_resign
         )
         # print(f'Against Stockfish 5 Level {stockfish_level}, won {win_percent} games, lost {loss_percent} games.')
@@ -211,4 +211,4 @@ def main(mp_training: bool):
 if __name__ == "__main__":
     with Timer():
         mp.set_start_method("spawn")  
-        main(mp_training=True)
+        main()

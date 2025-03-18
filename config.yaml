@@ -8,18 +8,18 @@ training:
     policy_loss: 1.0
     value_loss: 1.0
   training_steps: 700000
-  num_self_play_games: 4900000
+  num_self_play_games: 50
   optimizer: "adam"
   data_buffer_size: 500000
   checkpoint_interval: 1000
-  evaluation_games: 400
+  evaluation_games: 20
 
 network:
-  num_residual_blocks: 20
+  num_residual_blocks: 13
   num_filters: 256
 
 self_play:
-  num_simulations: 800
+  num_simulations: 200
   temperature:
     initial_moves: 30
   resign_threshold: -0.9
@@ -27,9 +27,9 @@ self_play:
 
 mcts:
   cpuct: 1.0
-  num_threads: 8
+  num_threads: 4
 
 evaluation:
-  tournament_games: 100
+  tournament_games: 20
   time_per_move: 5  # seconds
   evaluation_threshold: 0.55
