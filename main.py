@@ -50,7 +50,7 @@ def training_loop(stop_event, memory, network, device, optimizer_params, counter
     logging.info(f'Memory length after self play: {len(memory)}')
 
 # mp_training is whether or not to use multiprocessing training to run while self-play runs
-def main():
+def main(mp_training: bool = True):
     os.system("./clear_log.sh")
     logger = logging.getLogger(__name__)
     logging.basicConfig(filename='dem0.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -86,6 +86,7 @@ def main():
     current_best_network = DemoNet(num_res_blocks=configs.network.num_residual_blocks)
 
     challenger_network = deepcopy(current_best_network)
+    challenger_network.share_memory()
     # checkpoint.save_pretrained(state_dict=pretrained_weights)
     if checkpoint.blob_exists('checkpoints/weights.pth'):
         pretrained_weights = checkpoint.download_from_blob('checkpoints/weights.pth', return_bytes=False, device=device)
@@ -119,49 +120,49 @@ def main():
         )
         
         # NOTE multiprocessing code
-        stop_event = mp.Event()
-        counter = mp.Value("i", 0)  # Shared integer for storing i
-        training_process = mp.Process(
-            target=training_loop,
-            args=(stop_event, memory, challenger_network, device, optimizer_params, counter, configs.training.batch_size)
-        )
-        training_process.start()
+        if mp_training:
+            stop_event = mp.Event()
+            counter = mp.Value("i", 0)  # Shared integer for storing i
+            training_process = mp.Process(
+                target=training_loop,
+                args=(stop_event, memory, challenger_network, device, optimizer_params, counter, configs.training.batch_size)
+            )
+            training_process.start()
 
-        # 
-        self_play_session.run_self_play(
-            training_data=memory,
-            network=current_best_network,
-            device=torch.device('cpu'),
-            n_sims=configs.self_play.num_simulations,
-            num_games=configs.training.num_self_play_games,
-            max_moves=300
+            # 
+            self_play_session.run_self_play(
+                training_data=memory,
+                network=current_best_network,
+                device=torch.device('cpu'),
+                n_sims=configs.self_play.num_simulations,
+                num_games=configs.training.num_self_play_games,
+                max_moves=300
+            )
+            
+            stop_event.set()
+            training_process.join()
+            # print(f"\nTraining iterations completed: {counter.value}")  # Print the value of i
+            logger.debug(f'Training iterations completed: {counter.value}')
+        else:
+            for b in tqdm(range(2)):
+                _ = train_on_batch(
+                    data=memory,
+                    network=challenger_network,
+                    batch_size=configs.training.batch_size,
+                    optimizer=get_optimizer(model=challenger_network, **optimizer_params),
+                    device=device
+                )
+            logger.debug(f'Training iterations completed: {b}')
+
+
+        # Assert that weights have changed
+        weights_changed = any(
+            not torch.equal(p1, p2) for p1, p2 in zip(challenger_agent.network.parameters(), current_best_agent.network.to(device).parameters())
         )
 
-        # if not mp_training:
-        #     optimizer = get_optimizer(
-        #         optimizer_name=optimizer_params["optimizer_name"],
-        #         lr=optimizer_params["lr"],
-        #         weight_decay=optimizer_params["weight_decay"],
-        #         model=challenger_network,
-        #         momentum=optimizer_params.get("momentum", 0.0)
-        #     )
-        #     # NOTE still uses multiprocessing queue, see if this changes anything
-        #     train_bar = tqdm(range(1, training_epochs_per_iter+1))
-        #     for train_idx in train_bar:
-        #         train_on_batch(
-        #             data=memory,
-        #             network=challenger_network,
-        #             batch_size=configs.training.batch_size,
-        #             device=device,
-        #             optimizer=optimizer
-        #         )
-        #         train_bar.set_description(f"Training, Epoch {train_idx}.")
-        
-        stop_event.set()
-        training_process.join()
-        
-        # print(f"\nTraining iterations completed: {counter.value}")  # Print the value of i
-        logger.debug(f'Training iterations completed: {counter.value}')
+        assert weights_changed, "Error: Challenger network weights did not change after training!"
+        print("✅ Challenger network weights updated successfully.")
+        return
 
         # print("\nEvaluating...")
         new_best_agent, wins, draws, losses, win_percent, tot_games = evaluator(
@@ -232,4 +233,4 @@ def main():
 if __name__ == "__main__":
     with Timer():
         mp.set_start_method("spawn")  
-        main()
+        main(mp_training=False)

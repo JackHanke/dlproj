@@ -8,7 +8,7 @@ training:
     policy_loss: 1.0
     value_loss: 1.0
   training_steps: 700000
-  num_self_play_games: 10
+  num_self_play_games: 20
   optimizer: "adam"
   data_buffer_size: 500000
   checkpoint_interval: 1000
