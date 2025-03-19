@@ -7,7 +7,7 @@ import time
 from copy import deepcopy
 from tqdm import tqdm
 from pettingzoo.classic import chess_v6
-from utils.training import Checkpoint
+# from utils.training import Checkpoint
 from utils.memory import ReplayMemory
 from utils.mcts import mcts  
 
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class SelfPlaySession:
     def __init__(
         self, 
-        checkpoint_client: Checkpoint,
+        checkpoint_client: any,
         v_resign_start: float = -0.95, 
         disable_resignation_fraction: float = 0.1, 
         temperature_initial_moves: int = 30
