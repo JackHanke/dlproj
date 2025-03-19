@@ -7,7 +7,7 @@ import time
 from copy import deepcopy
 from tqdm import tqdm
 from pettingzoo.classic import chess_v6
-
+from utils.training import Checkpoint
 from utils.memory import ReplayMemory
 from utils.mcts import mcts  
 
@@ -16,10 +16,12 @@ logger = logging.getLogger(__name__)
 class SelfPlaySession:
     def __init__(
         self, 
+        checkpoint_client: Checkpoint,
         v_resign_start: float = -0.95, 
         disable_resignation_fraction: float = 0.1, 
         temperature_initial_moves: int = 30
     ):
+        self.checkpoint_client = checkpoint_client
         self.v_resign = v_resign_start
         self.disable_resignation_prob = disable_resignation_fraction
         self.false_positive_threshold = 0.05 # Keeping static
@@ -177,6 +179,8 @@ class SelfPlaySession:
                 logger.info(f'Pushed single sample to queue in {time.time()-single_push_start_time} s')
 
             logger.info(f'Pushed self-play data to queue in {time.time()-push_start_time} s')
+            self.checkpoint_client.save_replay_memory(memory=training_data)
+            self.checkpoint_client.save_log()
             logger.debug(f"Completed game {game_idx}/{num_games}")
 
         # Adjust resignation threshold after batch of games

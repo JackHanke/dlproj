@@ -65,7 +65,7 @@ def main():
     configs = load_config()
     print("Device for network training:", device)
 
-    self_play_session = SelfPlaySession()
+    self_play_session = SelfPlaySession(checkpoint_client=checkpoint)
     memory = ReplayMemory(configs.training.data_buffer_size)
     if checkpoint.blob_exists('checkpoint/replay_memory.pkl'):
         memory_list = checkpoint.load_replay_memory()
@@ -80,7 +80,6 @@ def main():
         "momentum": configs.training.momentum  
     }
         
-    
     current_best_network = DemoNet(num_res_blocks=configs.network.num_residual_blocks)
 
     challenger_network = deepcopy(current_best_network)
@@ -215,6 +214,7 @@ def main():
 
         # step checkpoint
         checkpoint.step(current_best_agent=deepcopy(current_best_agent))
+        os.system("./clear_log.sh")
 
         i += 1
     

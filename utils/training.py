@@ -95,6 +95,28 @@ class Checkpoint:
         # 🔹 Upload to Azure Blob Storage
         self.upload_to_blob(blob_folder, "pretrained_weights.pth", buffer.getvalue())
 
+    def save_log(self):
+        """
+        Uploads the `dem0.log` file to Azure Blob Storage.
+        """
+        blob_folder = "checkpoints"  # Folder structure
+        log_filename = "dem0.log"  # Log file name
+
+        # Check if log file exists
+        if not os.path.exists(log_filename):
+            print(f"❌ Log file {log_filename} not found.")
+            return
+        
+        # Read the log file
+        with open(log_filename, "rb") as log_file:
+            log_data = log_file.read()
+
+        # Upload log file to Azure Blob Storage
+        self.upload_to_blob(blob_folder, log_filename, log_data)
+
+        if self.verbose:
+            print(f"✅ Uploaded {log_filename} to Azure Blob Storage at {blob_folder}/{log_filename}")
+
     def save_state_dict(self) -> None:
         """
         Saves model weights (`.pth`) to Azure Blob Storage inside a structured folder.
@@ -182,6 +204,7 @@ class Checkpoint:
             self.save_state_dict()
             self.save_info()
             self.save_replay_memory(memory)
+            self.save_log()
 
             if self.compute_elo:
                 if self.verbose:

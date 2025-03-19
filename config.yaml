@@ -1,7 +1,7 @@
 training:
   learning_rate: 
     initial: 0.2
-  batch_size: 2048
+  batch_size: 1024
   momentum: 0.9
   weight_decay: 0.0001
   loss_weights:
