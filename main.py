@@ -213,7 +213,14 @@ def main():
             # plt.show(block=False)
 
         # step checkpoint
-        checkpoint.step(current_best_agent=deepcopy(current_best_agent))
+        checkpoint.step(
+            current_best_agent=deepcopy(current_best_agent), 
+            memory=memory,
+            info={
+                "stockfish_eval": f'Against Stockfish 5 Level {stockfish_level}, won {wins} games, drew {draws} games, lost {losses} games. ({round(100*win_percent, 2)}% wins.)',
+                "self_eval": f'Agent {challenger_agent.version} playing Agent {current_best_agent.version}, won {wins} games, drew {draws} games, lost {losses} games. ({round(100*win_percent, 2)}% wins.)'
+            }
+        )
         os.system("./clear_log.sh")
 
         i += 1

@@ -145,15 +145,15 @@ class Checkpoint:
         # 🔹 Upload to Azure Blob Storage
         self.upload_to_blob(blob_folder, "model.pth", buffer.getvalue())
 
-    def save_info(self, version: int) -> None:
+    def save_info(self, info: dict) -> None:
         """
         Saves metadata (`.json`) to Azure Blob Storage.
         """
-        assert isinstance(version, int), "Version must be an integer"
+        assert isinstance(self.version, int), "Version must be an integer"
         blob_folder = f"checkpoints"
 
         # 🔹 Create metadata dictionary
-        info = {"version": version}
+        info['version'] = self.version
 
         # 🔹 Convert JSON to bytes and upload
         json_bytes = json.dumps(info).encode('utf-8')
@@ -187,7 +187,7 @@ class Checkpoint:
         buffer = io.BytesIO(data)
         return pickle.load(buffer)
 
-    def step(self, current_best_agent: Agent, memory: ReplayMemory):
+    def step(self, current_best_agent: Agent, memory: ReplayMemory, info: dict):
         """
         Saves the best model, weights, replay memory, and metadata to Azure Blob Storage.
         """
@@ -202,7 +202,7 @@ class Checkpoint:
             # 🔹 Upload to Azure
             self.save_model_obj()
             self.save_state_dict()
-            self.save_info()
+            self.save_info(info=info)
             self.save_replay_memory(memory)
             self.save_log()
 
