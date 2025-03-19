@@ -54,6 +54,7 @@ def main():
     logger = logging.getLogger(__name__)
     logging.basicConfig(filename='dem0.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     logging.info(f'\n\nRunning Experiment on {datetime.now()} with the following configs:')
+    checkpoint = Checkpoint(verbose=True, compute_elo=False)
     # TODO add all configs to logging for this log
 
     base_path = "checkpoints/best_model/"
@@ -66,6 +67,12 @@ def main():
 
     self_play_session = SelfPlaySession()
     memory = ReplayMemory(configs.training.data_buffer_size)
+    if checkpoint.blob_exists('checkpoint/replay_memory.pkl'):
+        memory_list = checkpoint.load_replay_memory()
+        memory.load_memory(memory_list)
+        print(f"Loaded memory from blob path checkpoints/replay_memory.pkl")
+    else:
+        print("Starting with empty memory.")
     optimizer_params = {
         "optimizer_name": configs.training.optimizer,
         "lr": configs.training.learning_rate.initial,
@@ -73,7 +80,6 @@ def main():
         "momentum": configs.training.momentum  
     }
         
-    checkpoint = Checkpoint(verbose=True, compute_elo=False)
     
     current_best_network = DemoNet(num_res_blocks=configs.network.num_residual_blocks)
 

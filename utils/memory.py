@@ -24,6 +24,10 @@ class ReplayMemory:
     def __setstate__(self, state):
         self.__dict__.update(state)
 
+    def load_memory(self, memory: list) -> None:
+        for item in memory:
+            self.push(item)
+
     def push(self, *args) -> None:
         """Stores a new transition in memory."""
         with self.lock:

@@ -15,6 +15,7 @@ import os
 import torch.multiprocessing as mp
 from copy import deepcopy
 from dotenv import load_dotenv
+import pickle
 
 
 def train_on_batch(
@@ -94,11 +95,10 @@ class Checkpoint:
         # 🔹 Upload to Azure Blob Storage
         self.upload_to_blob(blob_folder, "pretrained_weights.pth", buffer.getvalue())
 
-    def save_state_dict(self, version: int) -> None:
+    def save_state_dict(self) -> None:
         """
         Saves model weights (`.pth`) to Azure Blob Storage inside a structured folder.
         """
-        assert isinstance(version, int), "Version must be an integer"
         blob_folder = "checkpoints"  # Folder structure
 
         # 🔹 Convert PyTorch model state_dict to bytes
@@ -109,12 +109,11 @@ class Checkpoint:
         # 🔹 Upload to Azure Blob Storage
         self.upload_to_blob(blob_folder, "weights.pth", buffer.getvalue())
 
-    def save_model_obj(self, version: int) -> None:
+    def save_model_obj(self) -> None:
         """
         Saves the full PyTorch model (`.pth`) to Azure Blob Storage.
         """
-        assert isinstance(version, int), "Version must be an integer"
-        blob_folder = f"checkpoints/version_{version}"
+        blob_folder = f"checkpoints"
 
         # 🔹 Convert model object to bytes
         buffer = io.BytesIO()
@@ -129,7 +128,7 @@ class Checkpoint:
         Saves metadata (`.json`) to Azure Blob Storage.
         """
         assert isinstance(version, int), "Version must be an integer"
-        blob_folder = f"checkpoints/version_{version}"
+        blob_folder = f"checkpoints"
 
         # 🔹 Create metadata dictionary
         info = {"version": version}
@@ -138,9 +137,37 @@ class Checkpoint:
         json_bytes = json.dumps(info).encode('utf-8')
         self.upload_to_blob(blob_folder, "info.json", json_bytes)
 
-    def step(self, current_best_agent: Agent):
+    def save_replay_memory(self, memory: ReplayMemory):
         """
-        Saves the best model, weights, and metadata to Azure Blob Storage.
+        Saves the ReplayMemory object as a .pkl file in Azure Blob Storage.
+        """
+        blob_folder = f"checkpoints"
+
+        # 🔹 Serialize ReplayMemory using pickle
+        buffer = io.BytesIO()
+        pickle.dump(list(memory.memory), buffer)
+        buffer.seek(0)
+
+        # 🔹 Upload to Azure Blob Storage
+        self.upload_to_blob(blob_folder, "replay_memory.pkl", buffer.getvalue())
+
+    def load_replay_memory(self) -> list:
+        """
+        Loads the ReplayMemory object from Azure Blob Storage.
+        """
+        blob_name = f"checkpoints/replay_memory.pkl"
+        
+        if not self.blob_exists(blob_name):
+            raise FileNotFoundError(f"❌ ReplayMemory not found at {blob_name}")
+
+        # 🔹 Download and deserialize ReplayMemory
+        data = self.download_from_blob(blob_name)
+        buffer = io.BytesIO(data)
+        return pickle.load(buffer)
+
+    def step(self, current_best_agent: Agent, memory: ReplayMemory):
+        """
+        Saves the best model, weights, replay memory, and metadata to Azure Blob Storage.
         """
         assert isinstance(current_best_agent, Agent), "Invalid agent provided"
         
@@ -151,9 +178,10 @@ class Checkpoint:
             self.version = current_best_agent.version  # Update version
 
             # 🔹 Upload to Azure
-            self.save_model_obj(self.version)
-            self.save_state_dict(self.version)
-            self.save_info(self.version)
+            self.save_model_obj()
+            self.save_state_dict()
+            self.save_info()
+            self.save_replay_memory(memory)
 
             if self.compute_elo:
                 if self.verbose:
