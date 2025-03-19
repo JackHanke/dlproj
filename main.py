@@ -20,10 +20,9 @@ from utils.configs import load_config
 
 
 def training_loop(stop_event, memory, network, device, optimizer_params, counter, batch_size):
-    """
-    Continuously train on a batch until stop_event is set.
-    The optimizer is created inside the child process using optimizer_params.
-    """
+    # Ensure logging is configured in child processes
+    logging.basicConfig(filename='dem0.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
     optimizer = get_optimizer(
         optimizer_name=optimizer_params["optimizer_name"],
         lr=optimizer_params["lr"],
@@ -43,17 +42,21 @@ def training_loop(stop_event, memory, network, device, optimizer_params, counter
         )
         if r:
             i += 1
-        if r == 1:
-            logging.info('Training started!')
+            if i == 1:
+                logging.info('Training started!')  # Should appear in log now
 
-    counter.value = i  # Store the final value of i in the shared variable
+    counter.value = i  
+    logging.info(f"Trained on {i} batches.")
     logging.info(f'Memory length after self play: {len(memory)}')
 
 # mp_training is whether or not to use multiprocessing training to run while self-play runs
 def main():
+    os.system("./clear_log.sh")
     logger = logging.getLogger(__name__)
     logging.basicConfig(filename='dem0.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     logging.info(f'\n\nRunning Experiment on {datetime.now()} with the following configs:')
+    logging.getLogger("azure").setLevel(logging.WARNING)
+    logging.getLogger("azure.storage").setLevel(logging.WARNING)
     checkpoint = Checkpoint(verbose=True, compute_elo=False)
     # TODO add all configs to logging for this log
 
@@ -67,10 +70,10 @@ def main():
 
     self_play_session = SelfPlaySession(checkpoint_client=checkpoint)
     memory = ReplayMemory(configs.training.data_buffer_size)
-    if checkpoint.blob_exists('checkpoint/replay_memory.pkl'):
+    if checkpoint.blob_exists('checkpoints/replay_memory.pkl'):
         memory_list = checkpoint.load_replay_memory()
         memory.load_memory(memory_list)
-        print(f"Loaded memory from blob path checkpoints/replay_memory.pkl")
+        print(f"Loaded memory from blob path checkpoints/replay_memory.pkl with length = {len(memory)}")
     else:
         print("Starting with empty memory.")
     optimizer_params = {
@@ -221,7 +224,6 @@ def main():
                 "self_eval": f'Agent {challenger_agent.version} playing Agent {current_best_agent.version}, won {wins} games, drew {draws} games, lost {losses} games. ({round(100*win_percent, 2)}% wins.)'
             }
         )
-        os.system("./clear_log.sh")
 
         i += 1
     

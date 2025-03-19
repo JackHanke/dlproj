@@ -12,6 +12,8 @@ from utils.memory import ReplayMemory
 from utils.mcts import mcts  
 
 logger = logging.getLogger(__name__)
+logging.getLogger("azure").setLevel(logging.WARNING)
+logging.getLogger("azure.storage").setLevel(logging.WARNING)
 
 class SelfPlaySession:
     def __init__(

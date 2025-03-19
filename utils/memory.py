@@ -26,7 +26,10 @@ class ReplayMemory:
 
     def load_memory(self, memory: list) -> None:
         for item in memory:
-            self.push(item)
+            with self.lock:
+                if len(self.memory) >= self.maxlen:
+                    self.memory.pop(0)  # Maintain fixed size
+                self.memory.append(item)
 
     def push(self, *args) -> None:
         """Stores a new transition in memory."""
