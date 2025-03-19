@@ -117,7 +117,7 @@ class Checkpoint:
         if self.verbose:
             print(f"✅ Uploaded {log_filename} to Azure Blob Storage at {blob_folder}/{log_filename}")
 
-    def save_state_dict(self) -> None:
+    def save_state_dict(self, path: str = None, state_dict: dict = None) -> None:
         """
         Saves model weights (`.pth`) to Azure Blob Storage inside a structured folder.
         """
@@ -125,11 +125,19 @@ class Checkpoint:
 
         # 🔹 Convert PyTorch model state_dict to bytes
         buffer = io.BytesIO()
-        torch.save(self.best_weights, buffer)
+        if path and state_dict:
+            torch.save(state_dict, buffer)
+        else:
+            torch.save(self.best_weights, buffer)
+
         buffer.seek(0)
 
         # 🔹 Upload to Azure Blob Storage
-        self.upload_to_blob(blob_folder, "weights.pth", buffer.getvalue())
+        if path is None:
+            self.upload_to_blob(blob_folder, "weights.pth", buffer.getvalue())
+        elif state_dict:
+            self.upload_to_blob(blob_folder, path, buffer.getvalue())
+
 
     def save_model_obj(self) -> None:
         """

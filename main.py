@@ -144,7 +144,7 @@ def main(mp_training: bool = True):
             # print(f"\nTraining iterations completed: {counter.value}")  # Print the value of i
             logger.debug(f'Training iterations completed: {counter.value}')
         else:
-            for b in tqdm(range(2)):
+            for b in tqdm(range(50)):
                 _ = train_on_batch(
                     data=memory,
                     network=challenger_network,
@@ -152,6 +152,11 @@ def main(mp_training: bool = True):
                     optimizer=get_optimizer(model=challenger_network, **optimizer_params),
                     device=device
                 )
+                if (b+1) % 5 == 0:
+                    checkpoint.save_state_dict(
+                        path=f"version_{challenger_agent.version}/model_weights.pth",
+                        state_dict=challenger_network.state_dict()
+                    )
             logger.debug(f'Training iterations completed: {b}')
 
 
@@ -162,7 +167,6 @@ def main(mp_training: bool = True):
 
         assert weights_changed, "Error: Challenger network weights did not change after training!"
         print("✅ Challenger network weights updated successfully.")
-        return
 
         # print("\nEvaluating...")
         new_best_agent, wins, draws, losses, win_percent, tot_games = evaluator(
@@ -184,7 +188,7 @@ def main(mp_training: bool = True):
         # print("\nExternal evaluating...")
         stockfish = Stockfish(level=stockfish_level)
         wins, draws, losses, win_percent, tot_games = evaluator(
-            challenger_agent=current_best_agent,
+            challenger_agent=new_best_agent,
             current_best_agent=stockfish,
             device=torch.device('cpu'),
             max_moves=300,
@@ -218,11 +222,11 @@ def main(mp_training: bool = True):
 
         # step checkpoint
         checkpoint.step(
-            current_best_agent=deepcopy(current_best_agent), 
+            current_best_agent=deepcopy(new_best_agent), 
             memory=memory,
             info={
                 "stockfish_eval": f'Against Stockfish 5 Level {stockfish_level}, won {wins} games, drew {draws} games, lost {losses} games. ({round(100*win_percent, 2)}% wins.)',
-                "self_eval": f'Agent {challenger_agent.version} playing Agent {current_best_agent.version}, won {wins} games, drew {draws} games, lost {losses} games. ({round(100*win_percent, 2)}% wins.)'
+                "self_eval": f'Agent {challenger_agent.version} played Agent {current_best_agent.version}, won {wins} games, drew {draws} games, lost {losses} games. ({round(100*win_percent, 2)}% wins.)'
             }
         )
 
