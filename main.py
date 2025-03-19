@@ -208,12 +208,7 @@ def main():
             # plt.show(block=False)
 
         # step checkpoint
-        checkpoint.step(
-            weights_path=weights_path, 
-            model_path=model_path, 
-            info_path=info_path, 
-            current_best_agent=deepcopy(current_best_agent)
-        )
+        checkpoint.step(current_best_agent=deepcopy(current_best_agent))
 
         i += 1
     
