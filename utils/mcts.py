@@ -104,7 +104,7 @@ def is_game_over(board: chess.Board):
 
 # backup function for MCTS, loops until hitting the root node (which is the node without a parent)
 def backup(node: Node, v: float = 0.0):
-    with threading.Lock():
+    with NODE_LOCK:
         while node is not None:
             node.n += 1
             node.w += v
@@ -131,12 +131,12 @@ def simulate(
     """
     
     # a) Selection - Traverse down the tree using UCB
-    if len(node.children) > 0:
-        best_score = -float('inf')
-        selected_move = None
-        n = node.n + 1e-6  # Avoid division by zero
+    with NODE_LOCK:  # Ensure no race conditions when reading children
+        if len(node.children) > 0:
+            best_score = -float('inf')
+            selected_move = None
+            n = node.n + 1e-6  # Avoid division by zero
 
-        with NODE_LOCK:  # Ensure no race conditions when reading children
             if len(node.children) < node.state.legal_moves.count():  # Check if expansion is incomplete
                 print("Node expansion incomplete. Waiting for other threads.")
                 return simulate(node, net, device, recursion_count, verbose, c_puct)
