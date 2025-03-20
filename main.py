@@ -50,7 +50,7 @@ def training_loop(stop_event, memory, network, device, optimizer_params, counter
     logging.info(f'Memory length after self play: {len(memory)}')
 
 # mp_training is whether or not to use multiprocessing training to run while self-play runs
-def main(mp_training: bool = True):
+def main(mp_training: bool = True, start_with_empty_replay_memory: bool = False, run_self_play: bool = True, train_network: bool = True):
     os.system("./clear_log.sh")
     logger = logging.getLogger(__name__)
     logging.basicConfig(filename='dem0.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -70,12 +70,15 @@ def main(mp_training: bool = True):
 
     self_play_session = SelfPlaySession(checkpoint_client=checkpoint)
     memory = ReplayMemory(configs.training.data_buffer_size)
-    if checkpoint.blob_exists('checkpoints/replay_memory.pkl'):
-        memory_list = checkpoint.load_replay_memory()
-        memory.load_memory(memory_list)
-        print(f"Loaded memory from blob path checkpoints/replay_memory.pkl with length = {len(memory)}")
+    if not start_with_empty_replay_memory:
+        if checkpoint.blob_exists('checkpoints/replay_memory.pkl'):
+            memory_list = checkpoint.load_replay_memory()
+            memory.load_memory(memory_list)
+            print(f"Loaded memory from blob path checkpoints/replay_memory.pkl with length = {len(memory)}")
+        else:
+            print("Starting with empty memory.")
     else:
-        print("Starting with empty memory.")
+        print('Starting with empty memory.')
     optimizer_params = {
         "optimizer_name": configs.training.optimizer,
         "lr": configs.training.learning_rate.initial,
@@ -133,7 +136,7 @@ def main(mp_training: bool = True):
             self_play_session.run_self_play(
                 training_data=memory,
                 network=current_best_network,
-                device=torch.device('cpu'),
+                device=device,
                 n_sims=configs.self_play.num_simulations,
                 num_games=configs.training.num_self_play_games,
                 max_moves=300
@@ -144,35 +147,47 @@ def main(mp_training: bool = True):
             # print(f"\nTraining iterations completed: {counter.value}")  # Print the value of i
             logger.debug(f'Training iterations completed: {counter.value}')
         else:
-            for b in tqdm(range(50)):
-                _ = train_on_batch(
-                    data=memory,
-                    network=challenger_network,
-                    batch_size=configs.training.batch_size,
-                    optimizer=get_optimizer(model=challenger_network, **optimizer_params),
-                    device=device
+            if run_self_play:
+                 print("Starting basic self play...")
+                 self_play_session.run_self_play(
+                    training_data=memory,
+                    network=current_best_network,
+                    device=device,
+                    n_sims=configs.self_play.num_simulations,
+                    num_games=configs.training.num_self_play_games,
+                    max_moves=300
                 )
-                if (b+1) % 5 == 0:
-                    checkpoint.save_state_dict(
-                        path=f"version_{challenger_agent.version}/model_weights.pth",
-                        state_dict=challenger_network.state_dict()
+            if train_network:
+                for b in tqdm(range(50)):
+                    _ = train_on_batch(
+                        data=memory,
+                        network=challenger_network,
+                        batch_size=configs.training.batch_size,
+                        optimizer=get_optimizer(model=challenger_network, **optimizer_params),
+                        device=device
                     )
-            logger.debug(f'Training iterations completed: {b}')
+                    if (b+1) % 5 == 0:
+                        checkpoint.save_state_dict(
+                            path=f"version_{challenger_agent.version}/model_weights.pth",
+                            state_dict=challenger_network.state_dict()
+                        )
+                logger.debug(f'Training iterations completed: {b}')
 
 
         # Assert that weights have changed
-        weights_changed = any(
-            not torch.equal(p1, p2) for p1, p2 in zip(challenger_agent.network.parameters(), current_best_agent.network.to(device).parameters())
-        )
+        if mp_training or train_network:
+            weights_changed = any(
+                not torch.equal(p1, p2) for p1, p2 in zip(challenger_agent.network.parameters(), current_best_agent.network.to(device).parameters())
+            )
 
-        assert weights_changed, "Error: Challenger network weights did not change after training!"
-        print("✅ Challenger network weights updated successfully.")
+            assert weights_changed, "Error: Challenger network weights did not change after training!"
+            print("✅ Challenger network weights updated successfully.")
 
         # print("\nEvaluating...")
         new_best_agent, wins, draws, losses, win_percent, tot_games = evaluator(
             challenger_agent=challenger_agent, 
             current_best_agent=current_best_agent,
-            device=torch.device('cpu'),
+            device=device,
             max_moves=300,
             num_games=configs.evaluation.tournament_games,
             v_resign=self_play_session.v_resign,
@@ -190,7 +205,7 @@ def main(mp_training: bool = True):
         wins, draws, losses, win_percent, tot_games = evaluator(
             challenger_agent=new_best_agent,
             current_best_agent=stockfish,
-            device=torch.device('cpu'),
+            device=device,
             max_moves=300,
             num_games=configs.evaluation.tournament_games,
             v_resign=self_play_session.v_resign
@@ -237,4 +252,9 @@ def main(mp_training: bool = True):
 if __name__ == "__main__":
     with Timer():
         mp.set_start_method("spawn")  
-        main(mp_training=False)
+        main(
+            mp_training=False,
+            start_with_empty_replay_memory=True,
+            run_self_play=True,
+            train_network=False
+        )
