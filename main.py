@@ -18,6 +18,8 @@ from utils.agent import Agent, Stockfish
 from utils.utils import Timer
 from utils.configs import load_config
 
+# TODO track by version. Add stock fish level. Start on last level. 
+
 
 def training_loop(stop_event, memory, network, device, optimizer_params, counter, batch_size, version, checkpoint):
     # Ensure logging is configured in child processes
@@ -44,7 +46,7 @@ def training_loop(stop_event, memory, network, device, optimizer_params, counter
             i += 1
             if i == 1:
                 logging.info('Training started!')  # Should appear in log now
-        if i % 5 == 0:
+        if i % 10 == 0 and i != 0:
             checkpoint.save_state_dict(
                 path=f"version_{version}/model_weights.pth",
                 state_dict=network.state_dict()
