@@ -183,69 +183,73 @@ def main(mp_training: bool = True, start_with_empty_replay_memory: bool = False,
             assert weights_changed, "Error: Challenger network weights did not change after training!"
             print("✅ Challenger network weights updated successfully.")
 
-        # print("\nEvaluating...")
-        new_best_agent, wins, draws, losses, win_percent, tot_games = evaluator(
-            challenger_agent=challenger_agent, 
-            current_best_agent=current_best_agent,
-            device=device,
-            max_moves=300,
-            num_games=configs.evaluation.tournament_games,
-            v_resign=self_play_session.v_resign,
-            win_threshold=configs.evaluation.evaluation_threshold
-        )
-        # print(f'After this loop, the best_agent is {current_best_agent.version}\n\n')
-        logger.info(f'Agent {challenger_agent.version} playing Agent {current_best_agent.version}, won {wins} games, drew {draws} games, lost {losses} games. ({round(100*win_percent, 2)}% wins.)')
+        if mp_training or train_network:
+            # print("\nEvaluating...")
+            new_best_agent, wins, draws, losses, win_percent, tot_games = evaluator(
+                challenger_agent=challenger_agent, 
+                current_best_agent=current_best_agent,
+                device=device,
+                max_moves=300,
+                num_games=configs.evaluation.tournament_games,
+                v_resign=self_play_session.v_resign,
+                win_threshold=configs.evaluation.evaluation_threshold
+            )
+            # print(f'After this loop, the best_agent is {current_best_agent.version}\n\n')
+            logger.info(f'Agent {challenger_agent.version} playing Agent {current_best_agent.version}, won {wins} games, drew {draws} games, lost {losses} games. ({round(100*win_percent, 2)}% wins.)')
 
-        current_best_network = deepcopy(new_best_agent.network).to(device)
-        challenger_network = new_best_agent.network.to(device)
-        current_best_version = new_best_agent.version
+            current_best_network = deepcopy(new_best_agent.network).to(device)
+            challenger_network = new_best_agent.network.to(device)
+            current_best_version = new_best_agent.version
 
-        # print("\nExternal evaluating...")
-        stockfish = Stockfish(level=stockfish_level)
-        wins, draws, losses, win_percent, tot_games = evaluator(
-            challenger_agent=new_best_agent,
-            current_best_agent=stockfish,
-            device=device,
-            max_moves=300,
-            num_games=configs.evaluation.tournament_games,
-            v_resign=self_play_session.v_resign
-        )
-        # print(f'Against Stockfish 5 Level {stockfish_level}, won {win_percent} games, lost {loss_percent} games.')
-        logger.info(f'Against Stockfish 5 Level {stockfish_level}, won {wins} games, drew {draws} games, lost {losses} games. ({round(100*win_percent, 2)}% wins.)')
-        
-        # logging
-        stockfish_progress[stockfish_level].append(win_percent)
+            # print("\nExternal evaluating...")
+            stockfish = Stockfish(level=stockfish_level)
+            wins, draws, losses, win_percent, tot_games = evaluator(
+                challenger_agent=new_best_agent,
+                current_best_agent=stockfish,
+                device=device,
+                max_moves=300,
+                num_games=configs.evaluation.tournament_games,
+                v_resign=self_play_session.v_resign
+            )
+            # print(f'Against Stockfish 5 Level {stockfish_level}, won {win_percent} games, lost {loss_percent} games.')
+            logger.info(f'Against Stockfish 5 Level {stockfish_level}, won {wins} games, drew {draws} games, lost {losses} games. ({round(100*win_percent, 2)}% wins.)')
+            
+            # logging
+            stockfish_progress[stockfish_level].append(win_percent)
 
-        if win_percent > 0.55:
-            # update stockfish to higher level
-            stockfish_level += 1
-            stockfish.engine.configure({"Skill Level": stockfish_level})
-            # print(f'! Upgrading Stockfish level to {stockfish_level}.')
-            logger.info(f'! Upgrading Stockfish level to {stockfish_level}.')
+            if win_percent > 0.55:
+                # update stockfish to higher level
+                stockfish_level += 1
+                stockfish.engine.configure({"Skill Level": stockfish_level})
+                # print(f'! Upgrading Stockfish level to {stockfish_level}.')
+                logger.info(f'! Upgrading Stockfish level to {stockfish_level}.')
 
-        offset = 0
-        for level, progress in stockfish_progress.items():
-            # plt.plot([i+offset for i in range(len(progress))], progress, label=f'Stockfish Level {level}')
-            offset += len(progress)
+            offset = 0
+            for level, progress in stockfish_progress.items():
+                # plt.plot([i+offset for i in range(len(progress))], progress, label=f'Stockfish Level {level}')
+                offset += len(progress)
 
-            # plt.ion()
-            # self_play_games = 10 # TODO change this to config var
-            # plt.xlabel(f'Training Loops ({self_play_games} games per)')
-            # plt.ylabel(f'Win Percentage')
-            # plt.title('dem0 Training Against Stockfish Levels')
-            # plt.show(block=False)
+                # plt.ion()
+                # self_play_games = 10 # TODO change this to config var
+                # plt.xlabel(f'Training Loops ({self_play_games} games per)')
+                # plt.ylabel(f'Win Percentage')
+                # plt.title('dem0 Training Against Stockfish Levels')
+                # plt.show(block=False)
 
-        # step checkpoint
-        checkpoint.step(
-            current_best_agent=deepcopy(new_best_agent), 
-            memory=memory,
-            info={
-                "stockfish_eval": f'Against Stockfish 5 Level {stockfish_level}, won {wins} games, drew {draws} games, lost {losses} games. ({round(100*win_percent, 2)}% wins.)',
-                "self_eval": f'Agent {challenger_agent.version} played Agent {current_best_agent.version}, won {wins} games, drew {draws} games, lost {losses} games. ({round(100*win_percent, 2)}% wins.)'
-            }
-        )
+            # step checkpoint
+            checkpoint.step(
+                current_best_agent=deepcopy(new_best_agent), 
+                memory=memory,
+                info={
+                    "stockfish_eval": f'Against Stockfish 5 Level {stockfish_level}, won {wins} games, drew {draws} games, lost {losses} games. ({round(100*win_percent, 2)}% wins.)',
+                    "self_eval": f'Agent {challenger_agent.version} played Agent {current_best_agent.version}, won {wins} games, drew {draws} games, lost {losses} games. ({round(100*win_percent, 2)}% wins.)'
+                }
+            )
 
-        i += 1
+            i += 1
+        else:
+            print('Ran single self play session.')
+            return
     
     stockfish.engine.close()
 
