@@ -19,7 +19,7 @@ from utils.utils import Timer
 from utils.configs import load_config
 
 
-def training_loop(stop_event, memory, network, device, optimizer_params, counter, batch_size):
+def training_loop(stop_event, memory, network, device, optimizer_params, counter, batch_size, version, checkpoint):
     # Ensure logging is configured in child processes
     logging.basicConfig(filename='dem0.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -44,6 +44,11 @@ def training_loop(stop_event, memory, network, device, optimizer_params, counter
             i += 1
             if i == 1:
                 logging.info('Training started!')  # Should appear in log now
+        if i % 5 == 0:
+            checkpoint.save_state_dict(
+                path=f"version_{version}/model_weights.pth",
+                state_dict=network.state_dict()
+            )
 
     counter.value = i  
     logging.info(f"Trained on {i} batches.")
@@ -128,7 +133,7 @@ def main(mp_training: bool = True, start_with_empty_replay_memory: bool = False,
             counter = mp.Value("i", 0)  # Shared integer for storing i
             training_process = mp.Process(
                 target=training_loop,
-                args=(stop_event, memory, challenger_network, device, optimizer_params, counter, configs.training.batch_size)
+                args=(stop_event, memory, challenger_network, device, optimizer_params, counter, configs.training.batch_size, challenger_agent.version, checkpoint)
             )
             training_process.start()
 
@@ -257,8 +262,6 @@ if __name__ == "__main__":
     with Timer():
         mp.set_start_method("spawn")  
         main(
-            mp_training=False,
-            start_with_empty_replay_memory=True,
-            run_self_play=True,
-            train_network=False
+            mp_training=True,
+            start_with_empty_replay_memory=False
         )
