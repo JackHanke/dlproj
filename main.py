@@ -18,8 +18,6 @@ from utils.agent import Agent, Stockfish
 from utils.utils import Timer
 from utils.configs import load_config
 
-# TODO track by version. Add stock fish level. Start on last level. 
-
 
 def training_loop(stop_event, memory, network, device, optimizer_params, counter, batch_size, iteration, checkpoint: Checkpoint):
     # Ensure logging is configured in child processes
@@ -58,7 +56,7 @@ def training_loop(stop_event, memory, network, device, optimizer_params, counter
 
 
 def get_latest_iteration(checkpoint_client: Checkpoint):
-    folders: list[str] = checkpoint_client.list_folders_in_blob_path(prefix='dem0/checkpoints')
+    folders: list[str] = checkpoint_client.list_folder_names()
     if not folders:
         return 0
     versions = map(lambda x: int(x.split('/')[-1].removeprefix("iteration_")), folders)
@@ -73,27 +71,39 @@ def main(mp_training: bool = True, start_with_empty_replay_memory: bool = False,
     logging.getLogger("azure").setLevel(logging.WARNING)
     logging.getLogger("azure.storage").setLevel(logging.WARNING)
     checkpoint = Checkpoint(verbose=True, compute_elo=False)
+    
     # Get information from latest version saved
     latest_iteration = get_latest_iteration(checkpoint_client=checkpoint)
     if latest_iteration == 0:
-        logging.info("Starting from iteration 0.")
+        logging.info("Starting from iterations from scratch.")
         stockfish_level = 0
         stockfish_progress = {0:[]}
         current_best_version = 0
+        self_play_start_from = 0
     else:
-        items = checkpoint.load_all_from_folder(folder=f"checkpoints/iteration_{latest_iteration}")
         stockfish_level = None
-        stockfish_progress = None
         current_best_version = 0
+
+        # See if self play was terminated mid game
         try:
-            info = items['info.json']
-            logger.info(f'Found info.json for latest version {latest_iteration}.')
-            stockfish_level = info['stockfish_level']
-            logger.info(f'Found stockfish level {stockfish_level} in info.json for latest iteration {latest_iteration}.')
-        except KeyError:
-            logger.warning(f'Failed getting info from latet iteration.')
-            if stockfish_level is None:
-                stockfish_level = 0
+            self_play_start_from = checkpoint.download_from_blob(blob_name=f"checkpoints/iteration_{latest_iteration}/self_play_games_completed.pkl")
+            logger.info(f"Starting self play from game {self_play_start_from}.")
+        except FileNotFoundError:
+            logger.warning("Starting self play from game 0.")
+            self_play_start_from = 0
+        # Go and find the latest info file
+        _iter = latest_iteration
+        while _iter > 0:
+            try:
+                info = checkpoint.download_from_blob(f"checkpoints/iteration_{_iter}/info.json")
+                logger.info(f'Found info.json for latest version {latest_iteration}.')
+                stockfish_level = info['stockfish_level']
+                logger.info(f'Found stockfish level {stockfish_level} in info.json for latest iteration {latest_iteration}.')
+            except Exception as e:
+                logger.warning(f'Failed getting info from iteration {_iter}: {e}')
+                if stockfish_level is None:
+                    stockfish_level = 0
+                _iter -= 1
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     configs = load_config()
@@ -103,7 +113,7 @@ def main(mp_training: bool = True, start_with_empty_replay_memory: bool = False,
     memory = ReplayMemory(configs.training.data_buffer_size)
     if not start_with_empty_replay_memory:
         if checkpoint.blob_exists(f'checkpoints/iteration_{latest_iteration}/replay_memory.pkl'):
-            memory_list = checkpoint.load_replay_memory()
+            memory_list = checkpoint.load_replay_memory(iteration=latest_iteration)
             memory.load_memory(memory_list)
             print(f"Loaded memory from blob path 'checkpoints/iteration_{latest_iteration}/replay_memory.pkl' with length = {len(memory)}")
         else:
@@ -165,13 +175,18 @@ def main(mp_training: bool = True, start_with_empty_replay_memory: bool = False,
 
             # 
             self_play_session.run_self_play(
+                iteration=i+1,
                 training_data=memory,
                 network=current_best_network,
                 device=device,
                 n_sims=configs.self_play.num_simulations,
                 num_games=configs.training.num_self_play_games,
-                max_moves=300
+                max_moves=300,
+                start_from_game_idx=self_play_start_from
             )
+
+            # Make zero
+            self_play_start_from = 0
             
             stop_event.set()
             training_process.join()

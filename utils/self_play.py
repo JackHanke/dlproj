@@ -68,6 +68,7 @@ class SelfPlaySession:
         n_sims: int,
         num_games: int, 
         max_moves: int, 
+        start_from_game_idx: int = 0
     ) -> None:
         """
         Runs self-play using MCTS in PettingZoo's Chess environment.
@@ -87,10 +88,8 @@ class SelfPlaySession:
             "player_0": 1,
             "player_1": -1
         }
-        int_to_player = {
-            1: "player_0",
-            -1: 'player_1'
-        }
+
+        num_games -= start_from_game_idx
 
         for game_idx in range(1, num_games+1):
             logger.debug(f'Starting game #{game_idx}')
@@ -185,6 +184,8 @@ class SelfPlaySession:
             logger.info(f'Pushed self-play data to queue in {time.time()-push_start_time} s')
             self.checkpoint_client.save_replay_memory(memory=training_data, iteration=iteration)
             self.checkpoint_client.save_log(iteration=iteration)
+            self.checkpoint_client.save_file(obj=game_idx, blob_folder=f"checkpoints/iteration_{iteration}", filename='self_play_games_completed.pkl')
+            logger.info(f"Saved self play game idx {game_idx} in iteration history.")
             logger.debug(f"Completed game {game_idx}/{num_games}")
 
         # Adjust resignation threshold after batch of games

@@ -75,7 +75,6 @@ class Checkpoint:
         # 🔹 Initialize Azure Blob Storage client
         self.blob_service_client = BlobServiceClient.from_connection_string(self.connection_string)
         self.container_client = self.blob_service_client.get_container_client(self.container_name)
-
     def upload_to_blob(self, blob_folder: str, filename: str, data: bytes):
         """
         Uploads binary data to Azure Blob Storage inside a specific folder.
@@ -85,6 +84,12 @@ class Checkpoint:
         blob_client.upload_blob(data, overwrite=True)
         if self.verbose:
             print(f"✅ Uploaded {filename} to Azure Blob Storage at {blob_name}")
+
+    def save_file(self, obj: any, blob_folder: str, filename: str):
+        buffer = io.BytesIO()
+        pickle.dump(obj, buffer)
+        buffer.seek(0)
+        self.upload_to_blob(blob_folder, filename, buffer.getvalue())
 
     def save_pretrained(self, state_dict: dict, folder: str = None):
         if not folder:
@@ -100,7 +105,7 @@ class Checkpoint:
         # 🔹 Upload to Azure Blob Storage
         self.upload_to_blob(blob_folder, "pretrained_weights.pth", buffer.getvalue())
 
-    def save_log(self, iteration: Union[int, Literal['best']], folder: str = None):
+    def save_log(self, iteration: Union[int, Literal['best']]):
         """
         Uploads the `dem0.log` file to Azure Blob Storage.
         """
@@ -209,8 +214,7 @@ class Checkpoint:
 
         # 🔹 Download and deserialize ReplayMemory
         data = self.download_from_blob(blob_name)
-        buffer = io.BytesIO(data)
-        return pickle.load(buffer)
+        return data
 
     def save_best_stats(self, info: dict, memory: ReplayMemory) -> None:
         self.save_model_obj(iteration="best")
@@ -271,6 +275,8 @@ class Checkpoint:
         """
         blob_client = self.container_client.get_blob_client(blob_name)
         blob_data = blob_client.download_blob().readall()
+        if isinstance(blob_data, int):
+            return pickle.load(blob_data)
         buffer = io.BytesIO(blob_data)
 
         # Detect file type and deserialize
@@ -282,49 +288,6 @@ class Checkpoint:
             return json.loads(blob_data.decode("utf-8"))
         else:
             raise ValueError(f"Unsupported file extension for blob: {blob_name}")
-    
-    def load_all_from_folder(self, folder: str, device: torch.device = None) -> dict:
-        """
-        Loads and deserializes all blobs from a given folder (blob prefix) in Azure Blob Storage.
-
-        Args:
-            folder (str): Folder prefix (e.g., "checkpoints/iteration_3").
-            device (torch.device): Device to map torch tensors to when loading torch objects.
-
-        Returns:
-            dict: A dictionary where keys are filenames and values are deserialized objects.
-        """
-        if folder and not folder.endswith('/'):
-            folder += '/'
-
-        results = {}
-        blob_iter = self.container_client.list_blobs(name_starts_with=folder)
-
-        for blob in blob_iter:
-            blob_name = blob.name
-            filename = blob_name[len(folder):]  # Extract just the filename
-            if not filename:  # Skip folders or empty entries
-                continue
-
-            if self.verbose:
-                print(f"📥 Downloading and deserializing {blob_name}...")
-
-            data = self.download_from_blob(blob_name)
-            buffer = io.BytesIO(data)
-
-            # Deserialize based on file extension
-            if filename.endswith(".pth") or filename.endswith(".pt"):
-                results[filename] = torch.load(buffer, map_location=device)
-            elif filename.endswith(".json"):
-                results[filename] = json.loads(data.decode("utf-8"))
-            elif filename.endswith(".pkl"):
-                results[filename] = pickle.load(buffer)
-            else:
-                if self.verbose:
-                    print(f"⚠️ Unsupported file type for {filename}, skipping.")
-                continue
-
-        return results
 
     def load_best_checkpoint(self, network, save_local: bool = False, local_dir: str = "local_checkpoints/"):
         """
@@ -388,7 +351,7 @@ class Checkpoint:
         # Check if the blob exists
         return blob_client.exists()
     
-    def list_folders_in_blob_path(self, prefix: str = '') -> list:
+    def list_folder_names(self) -> list:
         """
         Lists all folders (virtual directories) in the given blob path prefix.
 
@@ -398,17 +361,17 @@ class Checkpoint:
         Returns:
             List[str]: A list of folder names (as strings) under the prefix.
         """
-        # Ensure prefix ends with '/' if not empty
-        if prefix and not prefix.endswith('/'):
-            prefix += '/'
+        blobs = self.container_client.list_blobs()
+        folder_names = set()
 
-        blob_list = self.container_client.walk_blobs(name_starts_with=prefix, delimiter='/')
-        folders = [blob.name for blob in blob_list if hasattr(blob, 'name')]
+        for blob in blobs:
+            parts = blob.name.split('/')
+            for part in parts:
+                if part.startswith("iteration_"):
+                    folder_names.add(part)
+                    break  # Once we find the folder name, no need to go further
 
-        if self.verbose:
-            print(f"📁 Folders under '{prefix}': {folders}")
-
-        return folders
+        return sorted(folder_names)
 
 
 def _background_compute_elo_and_save(agent: Agent, info_blob_path: str, verbose: bool) -> None:
