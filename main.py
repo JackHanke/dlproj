@@ -21,7 +21,7 @@ from utils.configs import load_config
 # TODO track by version. Add stock fish level. Start on last level. 
 
 
-def training_loop(stop_event, memory, network, device, optimizer_params, counter, batch_size, version, checkpoint):
+def training_loop(stop_event, memory, network, device, optimizer_params, counter, batch_size, iteration, checkpoint: Checkpoint):
     # Ensure logging is configured in child processes
     logging.basicConfig(filename='dem0.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -46,17 +46,25 @@ def training_loop(stop_event, memory, network, device, optimizer_params, counter
             i += 1
             if i == 1:
                 logging.info('Training started!')  # Should appear in log now
-        if i % 10 == 0 and i != 0:
-            checkpoint.save_state_dict(
-                path=f"version_{version}/model_weights.pth",
-                state_dict=network.state_dict()
-            )
+            if i % 10 == 0:
+                checkpoint.save_state_dict(
+                    iteration=iteration,
+                    state_dict=network.state_dict()
+                )
 
     counter.value = i  
     logging.info(f"Trained on {i} batches.")
     logging.info(f'Memory length after self play: {len(memory)}')
 
-# mp_training is whether or not to use multiprocessing training to run while self-play runs
+
+def get_latest_iteration(checkpoint_client: Checkpoint):
+    folders: list[str] = checkpoint_client.list_folders_in_blob_path(prefix='dem0/checkpoints')
+    if not folders:
+        return 0
+    versions = map(lambda x: int(x.split('/')[-1].removeprefix("iteration_")), folders)
+    return max(versions)
+
+
 def main(mp_training: bool = True, start_with_empty_replay_memory: bool = False, run_self_play: bool = True, train_network: bool = True):
     os.system("./clear_log.sh")
     logger = logging.getLogger(__name__)
@@ -65,12 +73,28 @@ def main(mp_training: bool = True, start_with_empty_replay_memory: bool = False,
     logging.getLogger("azure").setLevel(logging.WARNING)
     logging.getLogger("azure.storage").setLevel(logging.WARNING)
     checkpoint = Checkpoint(verbose=True, compute_elo=False)
-    # TODO add all configs to logging for this log
+    # Get information from latest version saved
+    latest_iteration = get_latest_iteration(checkpoint_client=checkpoint)
+    if latest_iteration == 0:
+        logging.info("Starting from iteration 0.")
+        stockfish_level = 0
+        stockfish_progress = {0:[]}
+        current_best_version = 0
+    else:
+        items = checkpoint.load_all_from_folder(folder=f"checkpoints/iteration_{latest_iteration}")
+        stockfish_level = None
+        stockfish_progress = None
+        current_best_version = 0
+        try:
+            info = items['info.json']
+            logger.info(f'Found info.json for latest version {latest_iteration}.')
+            stockfish_level = info['stockfish_level']
+            logger.info(f'Found stockfish level {stockfish_level} in info.json for latest iteration {latest_iteration}.')
+        except KeyError:
+            logger.warning(f'Failed getting info from latet iteration.')
+            if stockfish_level is None:
+                stockfish_level = 0
 
-    base_path = "checkpoints/best_model/"
-    weights_path = os.path.join(base_path, "weights.pth")
-    info_path = os.path.join(base_path, "info.json")
-    model_path = os.path.join(base_path, "model.pth")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     configs = load_config()
     print("Device for network training:", device)
@@ -78,10 +102,10 @@ def main(mp_training: bool = True, start_with_empty_replay_memory: bool = False,
     self_play_session = SelfPlaySession(checkpoint_client=checkpoint)
     memory = ReplayMemory(configs.training.data_buffer_size)
     if not start_with_empty_replay_memory:
-        if checkpoint.blob_exists('checkpoints/replay_memory.pkl'):
+        if checkpoint.blob_exists(f'checkpoints/iteration_{latest_iteration}/replay_memory.pkl'):
             memory_list = checkpoint.load_replay_memory()
             memory.load_memory(memory_list)
-            print(f"Loaded memory from blob path checkpoints/replay_memory.pkl with length = {len(memory)}")
+            print(f"Loaded memory from blob path 'checkpoints/iteration_{latest_iteration}/replay_memory.pkl' with length = {len(memory)}")
         else:
             print("Starting with empty memory.")
     else:
@@ -98,20 +122,20 @@ def main(mp_training: bool = True, start_with_empty_replay_memory: bool = False,
     challenger_network = deepcopy(current_best_network)
     challenger_network.share_memory()
     # checkpoint.save_pretrained(state_dict=pretrained_weights)
-    if checkpoint.blob_exists('checkpoints/weights.pth'):
-        pretrained_weights = checkpoint.download_from_blob('checkpoints/weights.pth', return_bytes=False, device=device)
-        print(f"Loaded weights from blob path: checkpoints/weights.pth")
+    if checkpoint.blob_exists(f'{checkpoint.best_path}/weights.pth'):
+        pretrained_weights = checkpoint.download_from_blob(f'{checkpoint.best_path}/weights.pth', device=device)
+        logger.info(f"Loaded weights from blob path: {checkpoint.best_path}/weights.pth")
+        current_best_version = checkpoint.download_from_blob(f'{checkpoint.best_path}/info.json', device=device)['version']
     elif checkpoint.blob_exists('checkpoints/pretrained_weights.pth'):
-        pretrained_weights = checkpoint.download_from_blob('checkpoints/pretrained_weights.pth', return_bytes=False, device=device)
-        print(f"Loaded weights from blob path: checkpoints/pretrained_weights.pth")
+        pretrained_weights = checkpoint.download_from_blob('checkpoints/pretrained_weights.pth', device=device)
+        logger.info(f"Loaded weights from blob path: checkpoints/pretrained_weights.pth")
     else:
         pretrained_weights = None
         assert pretrained_weights
 
-    stockfish_level = 0
-    stockfish_progress = {0:[]}
-    current_best_version = 0
-    i = 0 # number of iterations performed
+    # stockfish_progress = {0:[]}
+
+    i = latest_iteration # number of iterations performed
     while True:
         iter_start_time = time.time()
         # print(">" * 50)
@@ -135,7 +159,7 @@ def main(mp_training: bool = True, start_with_empty_replay_memory: bool = False,
             counter = mp.Value("i", 0)  # Shared integer for storing i
             training_process = mp.Process(
                 target=training_loop,
-                args=(stop_event, memory, challenger_network, device, optimizer_params, counter, configs.training.batch_size, challenger_agent.version, checkpoint)
+                args=(stop_event, memory, challenger_network, device, optimizer_params, counter, configs.training.batch_size, i+1, checkpoint)
             )
             training_process.start()
 
@@ -175,7 +199,7 @@ def main(mp_training: bool = True, start_with_empty_replay_memory: bool = False,
                     )
                     if (b+1) % 5 == 0:
                         checkpoint.save_state_dict(
-                            path=f"version_{challenger_agent.version}/model_weights.pth",
+                            iteration=i+1,
                             state_dict=challenger_network.state_dict()
                         )
                 logger.debug(f'Training iterations completed: {b}')
@@ -224,6 +248,7 @@ def main(mp_training: bool = True, start_with_empty_replay_memory: bool = False,
             # logging
             stockfish_progress[stockfish_level].append(win_percent)
 
+
             if win_percent > 0.55:
                 # update stockfish to higher level
                 stockfish_level += 1
@@ -231,34 +256,38 @@ def main(mp_training: bool = True, start_with_empty_replay_memory: bool = False,
                 # print(f'! Upgrading Stockfish level to {stockfish_level}.')
                 logger.info(f'! Upgrading Stockfish level to {stockfish_level}.')
 
-            offset = 0
-            for level, progress in stockfish_progress.items():
-                # plt.plot([i+offset for i in range(len(progress))], progress, label=f'Stockfish Level {level}')
-                offset += len(progress)
+            # offset = 0
+            # for level, progress in stockfish_progress.items():
+            #     # plt.plot([i+offset for i in range(len(progress))], progress, label=f'Stockfish Level {level}')
+            #     offset += len(progress)
 
-                # plt.ion()
-                # self_play_games = 10 # TODO change this to config var
-                # plt.xlabel(f'Training Loops ({self_play_games} games per)')
-                # plt.ylabel(f'Win Percentage')
-                # plt.title('dem0 Training Against Stockfish Levels')
-                # plt.show(block=False)
+            #     # plt.ion()
+            #     # self_play_games = 10 # TODO change this to config var
+            #     # plt.xlabel(f'Training Loops ({self_play_games} games per)')
+            #     # plt.ylabel(f'Win Percentage')
+            #     # plt.title('dem0 Training Against Stockfish Levels')
+            #     # plt.show(block=False)
 
             # step checkpoint
             checkpoint.step(
                 current_best_agent=deepcopy(new_best_agent), 
                 memory=memory,
                 info={
+                    "iteration": i+1,
+                    "version": new_best_agent.version,
+                    "stockfish_level": stockfish_level,
                     "stockfish_eval": f'Against Stockfish 5 Level {stockfish_level}, won {wins} games, drew {draws} games, lost {losses} games. ({round(100*win_percent, 2)}% wins.)',
                     "self_eval": f'Agent {challenger_agent.version} played Agent {current_best_agent.version}, won {wins} games, drew {draws} games, lost {losses} games. ({round(100*win_percent, 2)}% wins.)'
-                }
+                },
+                current_iteration=i+1
             )
 
             i += 1
+            stockfish.engine.close()
         else:
             print('Ran single self play session.')
             return
     
-    stockfish.engine.close()
 
 if __name__ == "__main__":
     with Timer():

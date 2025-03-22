@@ -12,6 +12,7 @@ from utils.memory import ReplayMemory
 from utils.mcts import mcts  
 
 logger = logging.getLogger(__name__)
+logging.basicConfig(filename='dem0.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logging.getLogger("azure").setLevel(logging.WARNING)
 logging.getLogger("azure.storage").setLevel(logging.WARNING)
 
@@ -60,6 +61,7 @@ class SelfPlaySession:
 
     def run_self_play(
         self,
+        iteration: int,
         training_data: ReplayMemory,
         network: nn.Module,
         device: torch.device,
@@ -181,8 +183,8 @@ class SelfPlaySession:
                 logger.info(f'Pushed single sample to queue in {time.time()-single_push_start_time} s')
 
             logger.info(f'Pushed self-play data to queue in {time.time()-push_start_time} s')
-            self.checkpoint_client.save_replay_memory(memory=training_data)
-            self.checkpoint_client.save_log()
+            self.checkpoint_client.save_replay_memory(memory=training_data, iteration=iteration)
+            self.checkpoint_client.save_log(iteration=iteration)
             logger.debug(f"Completed game {game_idx}/{num_games}")
 
         # Adjust resignation threshold after batch of games

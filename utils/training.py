@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from typing import Union
+from typing import Union, Literal
 import json
 import os
 import torch.multiprocessing as mp
@@ -63,7 +63,9 @@ class Checkpoint:
         self.best_agent = None
         self.best_weights = None
         self.best_model = None
-        self.version = -1  # Start with an invalid version
+        self.best_path = 'checkpoints/best_weights'
+        self.iteration = -1  # Start with an invalid iteration
+        self.best_version = -1
         load_dotenv(override=True)
         
         # 🔹 Azure Storage Configuration
@@ -78,14 +80,17 @@ class Checkpoint:
         """
         Uploads binary data to Azure Blob Storage inside a specific folder.
         """
-        blob_name = f"{blob_folder}/{filename}"  # Store inside a subfolder (e.g., checkpoints/version_X/)
+        blob_name = f"{blob_folder}/{filename}"  # Store inside a subfolder (e.g., checkpoints/iteration_X/)
         blob_client = self.container_client.get_blob_client(blob_name)
         blob_client.upload_blob(data, overwrite=True)
         if self.verbose:
             print(f"✅ Uploaded {filename} to Azure Blob Storage at {blob_name}")
 
-    def save_pretrained(self, state_dict: dict):
-        blob_folder = "checkpoints"  # Folder structure
+    def save_pretrained(self, state_dict: dict, folder: str = None):
+        if not folder:
+            blob_folder = "checkpoints"  # Folder structure
+        else:
+            blob_folder = f'checkpoints/{folder}'
 
         # 🔹 Convert PyTorch model state_dict to bytes
         buffer = io.BytesIO()
@@ -95,11 +100,15 @@ class Checkpoint:
         # 🔹 Upload to Azure Blob Storage
         self.upload_to_blob(blob_folder, "pretrained_weights.pth", buffer.getvalue())
 
-    def save_log(self):
+    def save_log(self, iteration: Union[int, Literal['best']], folder: str = None):
         """
         Uploads the `dem0.log` file to Azure Blob Storage.
         """
-        blob_folder = "checkpoints"  # Folder structure
+        if iteration == 'best':
+            blob_folder = self.best_path
+        else:
+            blob_folder = f"checkpoints/iteration_{iteration}"  # Folder structure
+        
         log_filename = "dem0.log"  # Log file name
 
         # Check if log file exists
@@ -117,15 +126,18 @@ class Checkpoint:
         if self.verbose:
             print(f"✅ Uploaded {log_filename} to Azure Blob Storage at {blob_folder}/{log_filename}")
 
-    def save_state_dict(self, path: str = None, state_dict: dict = None) -> None:
+    def save_state_dict(self, iteration: Union[int, Literal['best']], state_dict: dict = None) -> None:
         """
         Saves model weights (`.pth`) to Azure Blob Storage inside a structured folder.
         """
-        blob_folder = "checkpoints"  # Folder structure
+        if iteration == 'best':
+            blob_folder = self.best_path
+        else:
+            blob_folder = f"checkpoints/iteration_{iteration}"  # Folder structure
 
         # 🔹 Convert PyTorch model state_dict to bytes
         buffer = io.BytesIO()
-        if path and state_dict:
+        if iteration != 'best' and state_dict:
             torch.save(state_dict, buffer)
         else:
             torch.save(self.best_weights, buffer)
@@ -133,17 +145,16 @@ class Checkpoint:
         buffer.seek(0)
 
         # 🔹 Upload to Azure Blob Storage
-        if path is None:
-            self.upload_to_blob(blob_folder, "weights.pth", buffer.getvalue())
-        elif state_dict:
-            self.upload_to_blob(blob_folder, path, buffer.getvalue())
-
-
-    def save_model_obj(self) -> None:
+        self.upload_to_blob(blob_folder, "weights.pth", buffer.getvalue())
+    
+    def save_model_obj(self, iteration: Union[int, Literal['best']]) -> None:
         """
         Saves the full PyTorch model (`.pth`) to Azure Blob Storage.
         """
-        blob_folder = f"checkpoints"
+        if iteration == 'best':
+            self.blob_folder = self.best_path
+        else:
+            blob_folder = f"checkpoints/iteration_{iteration}"
 
         # 🔹 Convert model object to bytes
         buffer = io.BytesIO()
@@ -153,25 +164,27 @@ class Checkpoint:
         # 🔹 Upload to Azure Blob Storage
         self.upload_to_blob(blob_folder, "model.pth", buffer.getvalue())
 
-    def save_info(self, info: dict) -> None:
+    def save_info(self, info: dict, iteration: Union[int, Literal['best']]) -> None:
         """
         Saves metadata (`.json`) to Azure Blob Storage.
         """
-        assert isinstance(self.version, int), "Version must be an integer"
-        blob_folder = f"checkpoints"
-
-        # 🔹 Create metadata dictionary
-        info['version'] = self.version
+        if iteration == 'best':
+            blob_folder = self.best_path
+        else:
+            blob_folder = f"checkpoints/iteration_{iteration}"
 
         # 🔹 Convert JSON to bytes and upload
         json_bytes = json.dumps(info).encode('utf-8')
         self.upload_to_blob(blob_folder, "info.json", json_bytes)
 
-    def save_replay_memory(self, memory: ReplayMemory):
+    def save_replay_memory(self, memory: ReplayMemory, iteration: Union[int, Literal['best']]):
         """
         Saves the ReplayMemory object as a .pkl file in Azure Blob Storage.
         """
-        blob_folder = f"checkpoints"
+        if iteration == 'best':
+            blob_folder = self.best_path
+        else:
+            blob_folder = f"checkpoints/iteration_{iteration}"
 
         # 🔹 Serialize ReplayMemory using pickle
         buffer = io.BytesIO()
@@ -181,11 +194,15 @@ class Checkpoint:
         # 🔹 Upload to Azure Blob Storage
         self.upload_to_blob(blob_folder, "replay_memory.pkl", buffer.getvalue())
 
-    def load_replay_memory(self) -> list:
+    def load_replay_memory(self, iteration: Union[int, Literal['best']]) -> list:
         """
         Loads the ReplayMemory object from Azure Blob Storage.
         """
-        blob_name = f"checkpoints/replay_memory.pkl"
+        if iteration == 'best':
+            blob_name = f"{self.best_path}/replay_memory.pkl"
+        else:
+            assert isinstance(iteration, int)
+            blob_name = f"checkpoints/iteration_{iteration}/replay_memory.pkl"
         
         if not self.blob_exists(blob_name):
             raise FileNotFoundError(f"❌ ReplayMemory not found at {blob_name}")
@@ -195,24 +212,34 @@ class Checkpoint:
         buffer = io.BytesIO(data)
         return pickle.load(buffer)
 
-    def step(self, current_best_agent: Agent, memory: ReplayMemory, info: dict):
+    def save_best_stats(self, info: dict, memory: ReplayMemory) -> None:
+        self.save_model_obj(iteration="best")
+        self.save_state_dict(iteration="best")
+        self.save_info(info=info, iteration="best")
+        self.save_replay_memory(memory, iteration="best")
+        self.save_log(iteration='best')
+
+    def step(self, current_best_agent: Agent, memory: ReplayMemory, info: dict, current_iteration: int):
         """
         Saves the best model, weights, replay memory, and metadata to Azure Blob Storage.
         """
         assert isinstance(current_best_agent, Agent), "Invalid agent provided"
-        
-        if current_best_agent.version > self.version:
+        self.save_model_obj(iteration=current_iteration)
+        self.save_state_dict(iteration=current_iteration)
+        self.save_info(info=info, iteration=current_iteration)
+        self.save_replay_memory(memory, iteration=current_iteration)
+        self.save_log(iteration=current_iteration)
+        if self.verbose:
+            print(f"✅ Checkpoint saved for iteration {self.iteration}")
+
+        if current_best_agent.version > self.best_version:
             self.best_model = deepcopy(current_best_agent.network)
             self.best_agent = current_best_agent
             self.best_weights = self.best_model.state_dict()
-            self.version = current_best_agent.version  # Update version
+            self.iteration = current_best_agent.iteration  # Update iteration
 
             # 🔹 Upload to Azure
-            self.save_model_obj()
-            self.save_state_dict()
-            self.save_info(info=info)
-            self.save_replay_memory(memory)
-            self.save_log()
+            self.save_best_stats(info=info, memory=memory)
 
             if self.compute_elo:
                 if self.verbose:
@@ -226,31 +253,91 @@ class Checkpoint:
                 p.start()  # Runs in background
             else:
                 if self.verbose:
-                    print(f"✅ Checkpoint saved for version {self.version}")
+                    print(f"✅ Best Weights have been checkpointed saved for iteration {self.iteration}")
 
-    def download_from_blob(self, blob_name: str, device: torch.device = None, return_bytes: bool = True) -> any:
+    def download_from_blob(self, blob_name: str, device: torch.device = None) -> any:
         """
-        Downloads a file from Azure Blob Storage and returns its binary content.
+        Downloads and deserializes a blob (file) from Azure Blob Storage.
+
+        Args:
+            blob_name (str): Full blob path (e.g., 'checkpoints/iteration_3/weights.pth')
+            device (torch.device): Device to load PyTorch tensors onto (if applicable)
+
+        Returns:
+            Any: The deserialized object (dict, model weights, Python object, etc.)
+
+        Raises:
+            ValueError: If file extension is not supported.
         """
         blob_client = self.container_client.get_blob_client(blob_name)
         blob_data = blob_client.download_blob().readall()
-        if device and not return_bytes:
-            buffer = io.BytesIO(blob_data)
+        buffer = io.BytesIO(blob_data)
+
+        # Detect file type and deserialize
+        if blob_name.endswith((".pth", ".pt")):
             return torch.load(buffer, map_location=device)
-        return blob_data
+        elif blob_name.endswith(".pkl"):
+            return pickle.load(buffer)
+        elif blob_name.endswith(".json"):
+            return json.loads(blob_data.decode("utf-8"))
+        else:
+            raise ValueError(f"Unsupported file extension for blob: {blob_name}")
+    
+    def load_all_from_folder(self, folder: str, device: torch.device = None) -> dict:
+        """
+        Loads and deserializes all blobs from a given folder (blob prefix) in Azure Blob Storage.
+
+        Args:
+            folder (str): Folder prefix (e.g., "checkpoints/iteration_3").
+            device (torch.device): Device to map torch tensors to when loading torch objects.
+
+        Returns:
+            dict: A dictionary where keys are filenames and values are deserialized objects.
+        """
+        if folder and not folder.endswith('/'):
+            folder += '/'
+
+        results = {}
+        blob_iter = self.container_client.list_blobs(name_starts_with=folder)
+
+        for blob in blob_iter:
+            blob_name = blob.name
+            filename = blob_name[len(folder):]  # Extract just the filename
+            if not filename:  # Skip folders or empty entries
+                continue
+
+            if self.verbose:
+                print(f"📥 Downloading and deserializing {blob_name}...")
+
+            data = self.download_from_blob(blob_name)
+            buffer = io.BytesIO(data)
+
+            # Deserialize based on file extension
+            if filename.endswith(".pth") or filename.endswith(".pt"):
+                results[filename] = torch.load(buffer, map_location=device)
+            elif filename.endswith(".json"):
+                results[filename] = json.loads(data.decode("utf-8"))
+            elif filename.endswith(".pkl"):
+                results[filename] = pickle.load(buffer)
+            else:
+                if self.verbose:
+                    print(f"⚠️ Unsupported file type for {filename}, skipping.")
+                continue
+
+        return results
 
     def load_best_checkpoint(self, network, save_local: bool = False, local_dir: str = "local_checkpoints/"):
         """
         Loads the model, weights, and metadata from Azure Blob Storage.
 
         Args:
-            version (int): The model version to retrieve.
+            iteration (int): The model iteration to retrieve.
             network (torch.nn.Module): The PyTorch model instance to load weights into.
             save_local (bool): Whether to save the downloaded files locally.
             local_dir (str): Directory to save the local copy.
 
         Returns:
-            dict: Metadata (e.g., version, elo).
+            dict: Metadata (e.g., iteration, elo).
         """
 
         # 🔹 Download and load weights
@@ -300,6 +387,28 @@ class Checkpoint:
 
         # Check if the blob exists
         return blob_client.exists()
+    
+    def list_folders_in_blob_path(self, prefix: str = '') -> list:
+        """
+        Lists all folders (virtual directories) in the given blob path prefix.
+
+        Args:
+            prefix (str): The prefix path to look under (e.g., 'checkpoints/')
+
+        Returns:
+            List[str]: A list of folder names (as strings) under the prefix.
+        """
+        # Ensure prefix ends with '/' if not empty
+        if prefix and not prefix.endswith('/'):
+            prefix += '/'
+
+        blob_list = self.container_client.walk_blobs(name_starts_with=prefix, delimiter='/')
+        folders = [blob.name for blob in blob_list if hasattr(blob, 'name')]
+
+        if self.verbose:
+            print(f"📁 Folders under '{prefix}': {folders}")
+
+        return folders
 
 
 def _background_compute_elo_and_save(agent: Agent, info_blob_path: str, verbose: bool) -> None:
@@ -312,7 +421,7 @@ def _background_compute_elo_and_save(agent: Agent, info_blob_path: str, verbose:
     agent.compute_bayes_elo()  # Slow function
 
     # 🔹 Prepare updated info
-    info = {"version": agent.version, "elo": agent.elo}
+    info = {"iteration": agent.iteration, "elo": agent.elo}
 
     # 🔹 Convert JSON to bytes
     json_bytes = json.dumps(info).encode('utf-8')
