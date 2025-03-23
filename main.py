@@ -108,7 +108,7 @@ def main(args):
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     configs = load_config()
-    print("Device for network training:", device)
+    logger.info("Device for network training:", device)
 
     self_play_session = SelfPlaySession(checkpoint_client=checkpoint)
     memory = ReplayMemory(configs.training.data_buffer_size)
@@ -116,11 +116,11 @@ def main(args):
         if checkpoint.blob_exists(f'checkpoints/iteration_{latest_iteration}/replay_memory.pkl'):
             memory_list = checkpoint.load_replay_memory(iteration=latest_iteration)
             memory.load_memory(memory_list)
-            print(f"Loaded memory from blob path 'checkpoints/iteration_{latest_iteration}/replay_memory.pkl' with length = {len(memory)}")
+            logger.info(f"Loaded memory from blob path 'checkpoints/iteration_{latest_iteration}/replay_memory.pkl' with length = {len(memory)}")
         else:
-            print("Starting with empty memory.")
+            logger.info("Starting with empty memory.")
     else:
-        print('Starting with empty memory.')
+        logger.info('Starting with empty memory.')
 
     optimizer_params = {
         "optimizer_name": configs.training.optimizer,
@@ -179,7 +179,7 @@ def main(args):
 
         else:
             if args.run_self_play:
-                print("Starting basic self play...")
+                logger.info("Starting basic self play...")
                 self_play_session.run_self_play(
                     training_data=memory,
                     network=current_best_network,
@@ -206,7 +206,7 @@ def main(args):
             not torch.equal(p1, p2) for p1, p2 in zip(challenger_agent.network.parameters(), current_best_agent.network.to(device).parameters())
         )
         assert weights_changed, "Error: Challenger network weights did not change after training!"
-        print("✅ Challenger network weights updated successfully.")
+        logger.info("✅ Challenger network weights updated successfully.")
 
         new_best_agent, wins, draws, losses, win_percent, tot_games = evaluator(
             challenger_agent=challenger_agent,
