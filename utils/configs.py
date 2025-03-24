@@ -26,6 +26,7 @@ class TrainingConfig:
     data_buffer_size: int
     checkpoint_interval: int
     evaluation_games: int
+    max_moves: int
 
 
 @dataclass
@@ -95,6 +96,7 @@ def load_config(file_path: str = 'config.yaml') -> Config:
             data_buffer_size=raw_config["training"]["data_buffer_size"],
             checkpoint_interval=raw_config["training"]["checkpoint_interval"],
             evaluation_games=raw_config["training"]["evaluation_games"],
+            max_moves=raw_config["training"]["max_moves"]
         ),
         network=NetworkConfig(**raw_config["network"]),
         self_play=SelfPlayConfig(

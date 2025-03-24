@@ -13,6 +13,7 @@ training:
   data_buffer_size: 500000
   checkpoint_interval: 1000
   evaluation_games: 20
+  max_moves: 300
 
 network:
   num_residual_blocks: 13
