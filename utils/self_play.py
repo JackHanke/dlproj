@@ -89,9 +89,8 @@ class SelfPlaySession:
             "player_1": -1
         }
 
-        num_games -= start_from_game_idx
 
-        for game_idx in range(1, num_games+1):
+        for game_idx in range(1+start_from_game_idx, num_games+1):
             logger.debug(f'Starting game #{game_idx}')
             should_disable = False
             supposed_winner = None # For resgin false positive logic
