@@ -63,7 +63,10 @@ def training_loop(stop_event, memory, network, device, optimizer_params, counter
 def get_latest_iterations(checkpoint_client: Checkpoint) -> dict[Literal['latest_completed_checkpoint', 'latest_started_checkpoint'], int]:
     folders: list[str] = checkpoint_client.list_folder_names()
     if not folders:
-        return 0
+        return {
+            "latest_completed_checkpoint": 0,
+            "latest_started_checkpoint": 0
+        }
     versions = map(lambda x: int(x.split('/')[-1].removeprefix("iteration_")), folders)
     latest_started_checkpoint = max(versions)
     if checkpoint_client.blob_exists(f"checkpoints/iteration_{latest_started_checkpoint}/info.json"):
@@ -144,7 +147,8 @@ def main(args):
         pretrained_weights = None
         assert pretrained_weights
 
-    current_best_network = DemoNet(num_res_blocks=configs.network.num_residual_blocks).load_state_dict(pretrained_weights)
+    current_best_network = DemoNet(num_res_blocks=configs.network.num_residual_blocks)
+    current_best_network.load_state_dict(pretrained_weights)
     challenger_network = deepcopy(current_best_network)
     challenger_network.share_memory()
     while True:

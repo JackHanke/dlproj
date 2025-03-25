@@ -183,7 +183,7 @@ def evaluate():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
     client = Checkpoint(verbose=True, compute_elo=False)
-    state_dict = client.download_from_blob("checkpoints/pretrained_weights.pth", device=device, return_bytes=False)
+    state_dict = client.download_from_blob("checkpoints/pretrained_weights.pth", device=device)
 
     pretrained_net = DemoNet(num_res_blocks=13)
     pretrained_net.to(device)
