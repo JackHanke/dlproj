@@ -116,7 +116,7 @@ def main(args):
     self_play_session = SelfPlaySession(checkpoint_client=checkpoint)
     memory = ReplayMemory(configs.training.data_buffer_size)
     if not args.start_with_empty_replay_memory:
-        if checkpoint.blob_exists(f'checkpoints/iteration_{iteration_dict['latest_started_checkpoint']}/replay_memory.pkl'):
+        if checkpoint.blob_exists(f"checkpoints/iteration_{iteration_dict['latest_started_checkpoint']}/replay_memory.pkl"):
             memory_list = checkpoint.load_replay_memory(iteration=iteration_dict['latest_started_checkpoint'])
             memory.load_memory(memory_list)
             logger.info(f"Loaded memory from blob path 'checkpoints/iteration_{iteration_dict['latest_started_checkpoint']}/replay_memory.pkl' with length = {len(memory)}")
@@ -132,9 +132,6 @@ def main(args):
         "momentum": configs.training.momentum
     }
 
-    current_best_network = DemoNet(num_res_blocks=configs.network.num_residual_blocks)
-    challenger_network = deepcopy(current_best_network)
-    challenger_network.share_memory()
 
     if checkpoint.blob_exists(f'{checkpoint.best_path}/weights.pth'):
         pretrained_weights = checkpoint.download_from_blob(f'{checkpoint.best_path}/weights.pth', device=device)
@@ -147,6 +144,9 @@ def main(args):
         pretrained_weights = None
         assert pretrained_weights
 
+    current_best_network = DemoNet(num_res_blocks=configs.network.num_residual_blocks).load_state_dict(pretrained_weights)
+    challenger_network = deepcopy(current_best_network)
+    challenger_network.share_memory()
     while True:
         logger.info(f'Beginning dem0 Iteration {i}...\n')
 
@@ -205,7 +205,7 @@ def main(args):
 
         # === Evaluation ===
         weights_changed = any(
-            not torch.equal(p1, p2) for p1, p2 in zip(challenger_agent.network.parameters(), current_best_agent.network.to(device).parameters())
+            not torch.equal(p1, p2) for p1, p2 in zip(challenger_agent.network.to(device).parameters(), current_best_agent.network.to(device).parameters())
         )
         assert weights_changed, "Error: Challenger network weights did not change after training!"
         logger.info("✅ Challenger network weights updated successfully.")
@@ -265,7 +265,6 @@ def run():
     with Timer():
         mp.set_start_method("spawn")
         main(args)
-
 
 
 if __name__ == "__main__":
