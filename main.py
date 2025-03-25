@@ -32,7 +32,7 @@ def parse_args():
 
 
 def training_loop(stop_event, memory, network, device, optimizer_params, counter, batch_size, iteration, checkpoint: Checkpoint):
-    logger = logging.basicConfig(filename='dem0.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+    logging.basicConfig(filename='dem0.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     optimizer = get_optimizer(
         optimizer_name=optimizer_params["optimizer_name"],
         lr=optimizer_params["lr"],
@@ -52,12 +52,12 @@ def training_loop(stop_event, memory, network, device, optimizer_params, counter
         if r:
             i += 1
             if i == 1:
-                logger.info('Training started!')
+                logging.info('Training started!')
             if i % 10 == 0:
                 checkpoint.save_state_dict(iteration=iteration, state_dict=network.state_dict())
     counter.value = i
-    logger.info(f"Trained on {i} batches.")
-    logger.info(f'Memory length after self play: {len(memory)}')
+    logging.info(f"Trained on {i} batches.")
+    logging.info(f'Memory length after self play: {len(memory)}')
 
 
 def get_latest_iterations(checkpoint_client: Checkpoint) -> dict[Literal['latest_completed_checkpoint', 'latest_started_checkpoint'], int]:
