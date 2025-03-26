@@ -23,7 +23,7 @@ class Agent:
             state=board_state, 
             starting_agent=starting_agent,
             net=self.network, 
-            node=root,
+            # node=root,
             device=device, 
             tau=tau, 
             sims=self.sims, 

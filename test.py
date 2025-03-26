@@ -188,50 +188,7 @@ def test(verbose=False):
     print(f'Average MCTS (sims: {sims} threads: {num_threads}) time: {sum(times)/len(times)} s')
 
 if __name__ == '__main__':
-    play_chess_game()
-    # test_mcts_parallel()
-    # agent_1 = Agent(version=1, network=DemoNet(num_res_blocks=1))
-    # agent_2 = Agent(version=2, network=DemoNet(num_res_blocks=1))
-
-    # winner_agent = evaluator(challenger_agent=agent_1, current_best_agent=agent_2)
-    # print(f'Winner agent is Agent {winner_agent.version}')
-
-    # from utils.evaluator import evaluator
-
-    # board = chess.Board()
-    # board.push(chess.Move.from_uci('e2e4'))
-    # mirrored_board = board.mirror()
-
-    # print()
-    # print(list([uh.uci() for uh in board.legal_moves]))
-    # print(list([uh.uci() for uh in mirrored_board.legal_moves]))
-    # input()
-
-
-
-    # current_best_version = 0
-    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # current_best_network = DemoNet(num_res_blocks=1).to(device)
-    # challenger_network = DemoNet(num_res_blocks=2).to(device)
-    # stockfish_level = 0
-    # stockfish = Stockfish(level=stockfish_level)
-
-    # current_best_agent = Agent(
-    #     version=current_best_version, 
-    #     network=current_best_network, 
-    #     sims=100
-    # )
-    # challenger_agent = Agent(
-    #     version=current_best_version+1, 
-    #     network=challenger_network, 
-    #     sims=100
-    # )
-
-    # current_best_agent = evaluator(
-    #     challenger_agent=current_best_agent, 
-    #     current_best_agent=stockfish,
-    #     device=device,
-    #     max_moves=100,
-    #     num_games=11,
-    #     v_resign=-0.95
-    # )    
+    from utils.training import Checkpoint
+    cp = Checkpoint(compute_elo=False, verbose=True)
+    log = cp.download_from_blob("checkpoints/best_weights/dem0.log")
+    print(log)

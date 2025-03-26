@@ -157,7 +157,7 @@ class Checkpoint:
         Saves the full PyTorch model (`.pth`) to Azure Blob Storage.
         """
         if iteration == 'best':
-            self.blob_folder = self.best_path
+            blob_folder = self.best_path
         else:
             blob_folder = f"checkpoints/iteration_{iteration}"
 
@@ -234,13 +234,13 @@ class Checkpoint:
         self.save_replay_memory(memory, iteration=current_iteration)
         self.save_log(iteration=current_iteration)
         if self.verbose:
-            print(f"✅ Checkpoint saved for iteration {self.iteration}")
+            print(f"✅ Checkpoint saved for iteration {current_iteration}")
 
         if current_best_agent.version > self.best_version:
             self.best_model = deepcopy(current_best_agent.network)
             self.best_agent = current_best_agent
             self.best_weights = self.best_model.state_dict()
-            self.iteration = current_best_agent.iteration  # Update iteration
+            self.iteration = current_iteration  # Update iteration
 
             # 🔹 Upload to Azure
             self.save_best_stats(info=info, memory=memory)

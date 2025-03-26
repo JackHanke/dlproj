@@ -87,7 +87,7 @@ def main(args):
     logger.info(f'\n\nRunning Experiment on {datetime.now()} with the following configs:')
     logging.getLogger("azure").setLevel(logging.WARNING)
     logging.getLogger("azure.storage").setLevel(logging.WARNING)
-    checkpoint = Checkpoint(verbose=True, compute_elo=False)
+    checkpoint = Checkpoint(verbose=False, compute_elo=False)
 
     iteration_dict = get_latest_iterations(checkpoint_client=checkpoint)
     if iteration_dict['latest_started_checkpoint'] == 0:
@@ -105,7 +105,7 @@ def main(args):
         self_play_start_from = checkpoint.download_from_blob(blob_name=f"checkpoints/iteration_{iteration_dict['latest_started_checkpoint']}/self_play_games_completed.pkl")
     else:
         i = iteration_dict['latest_started_checkpoint']
-        latest_info = checkpoint.download_from_blob(blob_name=f"checkpoints/iteration_{iteration_dict['latest_completed_checkpoint']}/self_play_games_completed.pkl")
+        latest_info = checkpoint.download_from_blob(blob_name=f"checkpoints/iteration_{iteration_dict['latest_completed_checkpoint']}/info.json")
         stockfish_level = latest_info['stockfish_level']
         stockfish_progress = latest_info['stockfish_progress']
         current_best_version = latest_info['version']
@@ -208,6 +208,8 @@ def main(args):
                 logger.debug(f'Training iterations completed: {args.train_iterations}')
 
         # === Evaluation ===
+        weights = checkpoint.download_from_blob(f"checkpoints/iteration_{i}/weights.pth", device=device)
+        challenger_agent.network.load_state_dict(weights)
         weights_changed = any(
             not torch.equal(p1, p2) for p1, p2 in zip(challenger_agent.network.to(device).parameters(), current_best_agent.network.to(device).parameters())
         )
@@ -223,14 +225,15 @@ def main(args):
             v_resign=self_play_session.v_resign,
             win_threshold=configs.evaluation.evaluation_threshold
         )
-        logger.info(f'Agent {challenger_agent.version} playing Agent {current_best_agent.version}, won {wins} games, drew {draws} games, lost {losses} games. ({round(100*win_percent, 2)}% wins.)')
+        self_eval = f'Agent {challenger_agent.version} playing Agent {current_best_agent.version}, won {wins} games, drew {draws} games, lost {losses} games. ({round(100*win_percent, 2)}% wins.)'
+        logger.info(self_eval)
 
         current_best_network = deepcopy(new_best_agent.network).to(device)
         challenger_network = new_best_agent.network.to(device)
         current_best_version = new_best_agent.version
 
         stockfish = Stockfish(level=stockfish_level)
-        wins, draws, losses, win_percent, tot_games = evaluator(
+        s_wins, s_draws, s_losses, s_win_percent, s_tot_games = evaluator(
             challenger_agent=new_best_agent,
             current_best_agent=stockfish,
             device=device,
@@ -238,8 +241,9 @@ def main(args):
             num_games=configs.evaluation.tournament_games,
             v_resign=self_play_session.v_resign
         )
-        logger.info(f'Against Stockfish 5 Level {stockfish_level}, won {wins} games, drew {draws} games, lost {losses} games. ({round(100*win_percent, 2)}% wins.)')
+        stockfish_eval = f'Against Stockfish 5 Level {stockfish_level}, won {s_wins} games, drew {s_draws} games, lost {s_losses} games. ({round(100*s_win_percent, 2)}% wins.)'
 
+        logger.info(stockfish_eval)
         stockfish_progress[stockfish_level].append(win_percent)
         if win_percent > 0.55:
             stockfish_level += 1
@@ -254,8 +258,8 @@ def main(args):
                 "version": new_best_agent.version,
                 "stockfish_level": stockfish_level,
                 "stockfish_progress": stockfish_progress,
-                "stockfish_eval": f'Against Stockfish 5 Level {stockfish_level}, won {wins} games, drew {draws} games, lost {losses} games. ({round(100*win_percent, 2)}% wins.)',
-                "self_eval": f'Agent {challenger_agent.version} played Agent {current_best_agent.version}, won {wins} games, drew {draws} games, lost {losses} games. ({round(100*win_percent, 2)}% wins.)'
+                "stockfish_eval": stockfish_eval,
+                "self_eval": self_eval
             },
             current_iteration=i
         )
@@ -273,3 +277,4 @@ def run():
 
 if __name__ == "__main__":
     run()
+    

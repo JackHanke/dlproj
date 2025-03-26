@@ -6,7 +6,7 @@ from pettingzoo.classic import chess_v6
 
 from utils.agent import Agent
 
-logger = logging.getLogger(__name__)
+logging.basicConfig(filename='dem0.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def evaluator(
         challenger_agent: Agent, 
@@ -38,7 +38,7 @@ def evaluator(
         if challenger_agent_wins >= threshold_games or current_best_agent_wins >= threshold_games:
             break
         
-        logger.debug(f'Starting game #{game_idx}')
+        logging.debug(f'Starting game #{game_idx}')
         env.reset()
 
         # Assign agents based on game index (alternate colors)
@@ -53,7 +53,7 @@ def evaluator(
                 "player_1": challenger_agent
             }
 
-        logger.debug(f'{player_to_agent["player_0"].version} vs. {player_to_agent["player_1"].version}')
+        logging.debug(f'{player_to_agent["player_0"].version} vs. {player_to_agent["player_1"].version}')
         # print(f'{player_to_agent["player_0"].version} vs. {player_to_agent["player_1"].version}')
 
         winning_player = None
@@ -71,13 +71,13 @@ def evaluator(
                 game_result = reward
                 last_player = player_to_int[current_player]
                 winning_player = game_result * last_player
-                logger.debug(f"Game terminated for {current_player} at move {move_idx}. {winning_player} is the winner. Reward = {reward}, Last Player = {last_player}, is truncated: {truncation}")
+                logging.debug(f"Game terminated for {current_player} at move {move_idx}. {winning_player} is the winner. Reward = {reward}, Last Player = {last_player}, is truncated: {truncation}")
                 break
 
             if truncation:
                 winning_player = 0
                 last_player = player_to_int[current_player]
-                logger.debug(f"Game truncated for {current_player} at move {move_idx}. {winning_player} is the winner. Reward = {reward}, Last Player = {last_player}")
+                logging.debug(f"Game truncated for {current_player} at move {move_idx}. {winning_player} is the winner. Reward = {reward}, Last Player = {last_player}")
                 break
 
             tau = 0  # No exploration during evaluation
@@ -87,7 +87,7 @@ def evaluator(
             # Resignation logic
             if move_idx > 10 and v < v_resign:
                 winning_player = -1 * player_to_int[current_player]
-                logger.debug(f"Player {current_player} resigned at move {move_idx} with value {v:.3f}")
+                logging.debug(f"Player {current_player} resigned at move {move_idx} with value {v:.3f}")
                 break
 
             env.step(selected_move)
@@ -100,19 +100,25 @@ def evaluator(
         if (game_idx % 2) == 0:  # Challenger is white
             if winning_player == 1:
                 challenger_agent_wins += 1
+                logging.info("Challenger one.")
             elif winning_player == -1:
                 current_best_agent_wins += 1
+                logging.info("Current best one.")
             else:
+                logging.info("Draw between current best and evaluator")
                 draws += 1
         else:  # Challenger is black
             if winning_player == -1:
                 challenger_agent_wins += 1
+                logging.info("Challenger one.")
             elif winning_player == 1:
                 current_best_agent_wins += 1
+                logging.info("Current best one.")
             else:
+                logging.info("Draw between current best and evaluator")
                 draws += 1
 
-        logger.debug(f"Completed game {game_idx}/{num_games}")
+        logging.debug(f"Completed game {game_idx}/{num_games}")
 
     win_percent = challenger_agent_wins/game_idx
 
@@ -125,7 +131,7 @@ def evaluator(
 
     # else return best agent
     if challenger_agent_wins >= current_best_agent_wins:
-        logger.info(f'Challenger agent v{challenger_agent.version} wins!')
+        logging.info(f'Challenger agent v{challenger_agent.version} wins!')
         return_agent = challenger_agent  
     else:
         return_agent = current_best_agent
