@@ -190,5 +190,5 @@ def test(verbose=False):
 if __name__ == '__main__':
     from utils.training import Checkpoint
     cp = Checkpoint(compute_elo=False, verbose=True)
-    log = cp.download_from_blob("checkpoints/best_weights/dem0.log")
-    print(log)
+    memory = cp.download_from_blob("checkpoints/best_weights/replay_memory.pkl")
+    print(memory[0].policy.max(), memory[331].policy.max(), memory[213].policy.max(), memory[393].policy.max())
