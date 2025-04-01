@@ -26,7 +26,7 @@ def train_on_batch(
     optimizer: Union[optim.Adam, optim.SGD],
     policy_weight: float = 1.0,
     value_weight: float = 1.0
-):
+) -> bool:
     network.to(device)
     network.train()
     if len(data) <= batch_size:

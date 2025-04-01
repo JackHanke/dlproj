@@ -23,6 +23,7 @@ from typing import Literal
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Run AlphaZero-like training loop.")
+    parser.add_argument("--use_pretrained", action="store_true")
     parser.add_argument("--mp_training", action="store_true", help="Use multiprocessing for training.")
     parser.add_argument("--start_with_empty_replay_memory", action="store_true", help="Start with empty replay memory.")
     parser.add_argument("--no_self_play", dest="run_self_play", action="store_false", help="Skip self play.")
@@ -140,15 +141,16 @@ def main(args):
         pretrained_weights = checkpoint.download_from_blob(f'{checkpoint.best_path}/weights.pth', device=device)
         logger.info(f"Loaded weights from blob path: {checkpoint.best_path}/weights.pth")
         current_best_version = checkpoint.download_from_blob(f'{checkpoint.best_path}/info.json', device=device)['version']
-    elif checkpoint.blob_exists('checkpoints/pretrained_weights.pth'):
+    elif checkpoint.blob_exists('checkpoints/pretrained_weights.pth') and args.use_pretrained:
         pretrained_weights = checkpoint.download_from_blob('checkpoints/pretrained_weights.pth', device=device)
         logger.info(f"Loaded weights from blob path: checkpoints/pretrained_weights.pth")
     else:
         pretrained_weights = None
-        assert pretrained_weights
+        logger.info('Starting with random weights.')
 
     current_best_network = DemoNet(num_res_blocks=configs.network.num_residual_blocks)
-    current_best_network.load_state_dict(pretrained_weights)
+    if pretrained_weights:
+        current_best_network.load_state_dict(pretrained_weights)
     challenger_network = deepcopy(current_best_network)
     challenger_network.share_memory()
     while True:

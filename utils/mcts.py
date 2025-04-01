@@ -56,8 +56,6 @@ class Node:
         self.q = 0.0     # mean value = w / n
         self.p = prior   # prior from network
 
-        # Optional concurrency lock
-        self.lock = threading.Lock()
 
 def add_dirichlet_noise_to_root(root: Node, alpha=0.03, epsilon=0.25):
     legal_moves = list(root.children.keys())
@@ -69,6 +67,7 @@ def add_dirichlet_noise_to_root(root: Node, alpha=0.03, epsilon=0.25):
         child = root.children[move]
         child.p = (1 - epsilon) * child.p + epsilon * eta
 
+
 def backup(node: Node, value: float):
     """
     Backup the value all the way up to the root.
@@ -76,12 +75,12 @@ def backup(node: Node, value: float):
     """
     v = value
     while node is not None:
-        with node.lock:
-            node.n += 1
-            node.w += v
-            node.q = node.w / node.n
+        node.n += 1
+        node.w += v
+        node.q = node.w / node.n
         v = -v  # flip sign for parent
         node = node.parent
+
 
 def is_game_over(board: chess.Board) -> bool:
     """
@@ -92,6 +91,7 @@ def is_game_over(board: chess.Board) -> bool:
     if board.is_insufficient_material() or board.can_claim_draw():
         return True
     return False
+
 
 def create_pi_vector(node: Node, tau: float):
     """
@@ -145,13 +145,7 @@ def select_leaf_node(root: Node, c_puct: float = 3.0) -> Node:
                 best_score = score
                 selected_move = move
 
-        if selected_move is None:
-            # No valid children or something went wrong
-            return current
         current = current.children[selected_move]
-        if is_game_over(current.state):
-            return current
-
     # current is now a leaf (no children or game over)
     return current
 
@@ -224,27 +218,26 @@ def expand_nodes(leaf_nodes, net, device):
         p_vec = filter_legal_moves_and_renomalize(policy_batch[b_idx], action_mask).squeeze(-1)
 
         # 2c) Expand children
-        with node.lock:
-            if len(node.children) == 0:
-                for move, p_val in zip(node.state.legal_moves, p_vec.cpu()):
-                    next_state = deepcopy(node.state)
-                    next_state.push(move)
-                    # Example: shift board_history or however you handle it
-                    board_history = np.dstack((
-                        get_observation(next_state, player=0)[:, :, 7:],
-                        node.board_history[:, :, :-13]
-                    ))
-                    new_agent = POSSIBLE_AGENTS[0] if node.agent == POSSIBLE_AGENTS[1] else POSSIBLE_AGENTS[1]
-                    new_node = Node(
-                        state=next_state,
-                        board_history=board_history,
-                        agent=new_agent,
-                        parent=node,
-                        prior=p_val.item()
-                    )
-                    node.children[move] = new_node
+        if len(node.children) == 0:
+            for move, p_val in zip(node.state.legal_moves, p_vec.cpu()):
+                next_state = deepcopy(node.state)
+                next_state.push(move)
+                # Example: shift board_history or however you handle it
+                board_history = np.dstack((
+                    get_observation(next_state, player=0)[:, :, 7:],
+                    node.board_history[:, :, :-13]
+                ))
+                new_agent = POSSIBLE_AGENTS[0] if node.agent == POSSIBLE_AGENTS[1] else POSSIBLE_AGENTS[1]
+                new_node = Node(
+                    state=next_state,
+                    board_history=board_history,
+                    agent=new_agent,
+                    parent=node,
+                    prior=p_val.item()
+                )
+                node.children[move] = new_node
 
-        # 2d) Backup the value
+        # 2d) Backup the values
         val = value_batch[b_idx].item()
         backup(node, val)
 

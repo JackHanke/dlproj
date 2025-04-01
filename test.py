@@ -188,7 +188,18 @@ def test(verbose=False):
     print(f'Average MCTS (sims: {sims} threads: {num_threads}) time: {sum(times)/len(times)} s')
 
 if __name__ == '__main__':
-    from utils.training import Checkpoint
-    cp = Checkpoint(compute_elo=False, verbose=True)
-    memory = cp.download_from_blob("checkpoints/best_weights/replay_memory.pkl")
-    print(memory[0].policy.max(), memory[331].policy.max(), memory[213].policy.max(), memory[393].policy.max())
+    env = chess_v6.env(render_mode=None)  # No GUI rendering
+    env.reset()
+    net = DemoNet(num_res_blocks=1)
+
+    for _ in range(3):
+        pi, v, selected_move, _ = mcts(
+            deepcopy(env.board),
+            starting_agent=env.agent_selection,
+            net=net,
+            device=torch.device('cpu'),
+            sims=1000,
+            tau=1
+        )
+
+        print(pi.topk(10).values)
