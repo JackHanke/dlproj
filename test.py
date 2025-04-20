@@ -192,7 +192,8 @@ if __name__ == '__main__':
     env.reset()
     net = DemoNet(num_res_blocks=1)
 
-    for _ in range(3):
+    for _ in range(1000):
+        print(f"Players turn: {env.agent_selection}")
         pi, v, selected_move, _ = mcts(
             deepcopy(env.board),
             starting_agent=env.agent_selection,
@@ -201,5 +202,8 @@ if __name__ == '__main__':
             sims=1000,
             tau=1
         )
+        print(f"Move selected: {selected_move}")
+        env.step(selected_move)
 
-        print(pi.topk(10).values)
+        print(pi.topk(10).values, pi.argmax())
+        print()
