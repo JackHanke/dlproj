@@ -20,7 +20,7 @@ network:
   num_filters: 256
 
 self_play:
-  num_simulations: 200
+  num_simulations: 1000
   temperature:
     initial_moves: 30
   resign_threshold: -0.9

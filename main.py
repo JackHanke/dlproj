@@ -188,6 +188,7 @@ def main(args):
             if args.run_self_play:
                 logger.info("Starting basic self play...")
                 self_play_session.run_self_play(
+                    iteration=i,
                     training_data=memory,
                     network=current_best_network,
                     device=device,
