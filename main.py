@@ -139,20 +139,33 @@ def main(args):
 
     if checkpoint.blob_exists(f'{checkpoint.best_path}/weights.pth'):
         pretrained_weights = checkpoint.download_from_blob(f'{checkpoint.best_path}/weights.pth', device=device)
-        logger.info(f"Loaded weights from blob path: {checkpoint.best_path}/weights.pth")
+        logger.info(f"Current Best Net: loaded weights from blob path: {checkpoint.best_path}/weights.pth")
         current_best_version = checkpoint.download_from_blob(f'{checkpoint.best_path}/info.json', device=device)['version']
     elif checkpoint.blob_exists('checkpoints/pretrained_weights.pth') and args.use_pretrained:
         pretrained_weights = checkpoint.download_from_blob('checkpoints/pretrained_weights.pth', device=device)
-        logger.info(f"Loaded weights from blob path: checkpoints/pretrained_weights.pth")
+        logger.info(f"Current Best Net: loaded weights from blob path: checkpoints/pretrained_weights.pth")
     else:
         pretrained_weights = None
         logger.info('Starting with random weights.')
 
     current_best_network = DemoNet(num_res_blocks=configs.network.num_residual_blocks)
+    
+    latest_iter = iteration_dict['latest_started_checkpoint']
+    challenger_weights_path = f"checkpoints/iteration_{latest_iter}/weights.pth"
+
+    challenger_network = DemoNet(num_res_blocks=configs.network.num_residual_blocks)
+    if checkpoint.blob_exists(challenger_weights_path):
+        challenger_weights = checkpoint.download_from_blob(challenger_weights_path, device=device)
+        challenger_network.load_state_dict(challenger_weights)
+        logger.info(f"✅ Loaded challenger weights from: {challenger_weights_path}")
+    else:
+        # Fall back to best or random if challenger weights don't exist
+        logger.info("No challenger weights found. Initializing from current best.")
+        challenger_network.load_state_dict(current_best_network.state_dict())
+
+
     if pretrained_weights:
         current_best_network.load_state_dict(pretrained_weights)
-    challenger_network = deepcopy(current_best_network)
-    challenger_network.share_memory()
     while True:
         logger.info(f'Beginning dem0 Iteration {i}...\n')
 
