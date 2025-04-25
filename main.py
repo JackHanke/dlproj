@@ -149,6 +149,8 @@ def main(args):
         logger.info('Starting with random weights.')
 
     current_best_network = DemoNet(num_res_blocks=configs.network.num_residual_blocks)
+    if pretrained_weights:
+        current_best_network.load_state_dict(pretrained_weights)
     
     latest_iter = iteration_dict['latest_started_checkpoint']
     challenger_weights_path = f"checkpoints/iteration_{latest_iter}/weights.pth"
@@ -164,8 +166,6 @@ def main(args):
         challenger_network.load_state_dict(current_best_network.state_dict())
 
 
-    if pretrained_weights:
-        current_best_network.load_state_dict(pretrained_weights)
     while True:
         logger.info(f'Beginning dem0 Iteration {i}...\n')
 

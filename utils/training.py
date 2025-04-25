@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from typing import Union, Literal
+from typing import Union, Literal, Optional
 import json
 import os
 import torch.multiprocessing as mp
@@ -131,7 +131,7 @@ class Checkpoint:
         if self.verbose:
             print(f"✅ Uploaded {log_filename} to Azure Blob Storage at {blob_folder}/{log_filename}")
 
-    def save_state_dict(self, iteration: Union[int, Literal['best']], state_dict: dict = None) -> None:
+    def save_state_dict(self, iteration: Union[int, Literal['best']], state_dict: Optional[dict] = None) -> None:
         """
         Saves model weights (`.pth`) to Azure Blob Storage inside a structured folder.
         """
@@ -139,20 +139,15 @@ class Checkpoint:
             blob_folder = self.best_path
         else:
             blob_folder = f"checkpoints/iteration_{iteration}"  # Folder structure
-
         # 🔹 Convert PyTorch model state_dict to bytes
         buffer = io.BytesIO()
-        if iteration != 'best' and state_dict:
-            torch.save(state_dict, buffer)
-        else:
-            torch.save(self.best_weights, buffer)
-
+        target_state = state_dict if state_dict is not None else self.best_weights
+        torch.save(target_state, buffer)
         buffer.seek(0)
-
         # 🔹 Upload to Azure Blob Storage
         self.upload_to_blob(blob_folder, "weights.pth", buffer.getvalue())
     
-    def save_model_obj(self, iteration: Union[int, Literal['best']]) -> None:
+    def save_model_obj(self, iteration: Union[int, Literal['best']], model: Optional[nn.Module] = None) -> None:
         """
         Saves the full PyTorch model (`.pth`) to Azure Blob Storage.
         """
@@ -163,7 +158,7 @@ class Checkpoint:
 
         # 🔹 Convert model object to bytes
         buffer = io.BytesIO()
-        torch.save(self.best_model, buffer)
+        torch.save(model if model is not None else self.best_model, buffer)
         buffer.seek(0)
 
         # 🔹 Upload to Azure Blob Storage
@@ -228,8 +223,9 @@ class Checkpoint:
         Saves the best model, weights, replay memory, and metadata to Azure Blob Storage.
         """
         assert isinstance(current_best_agent, Agent), "Invalid agent provided"
-        self.save_model_obj(iteration=current_iteration)
-        self.save_state_dict(iteration=current_iteration)
+        # Save the checkpoint for this iteration using the current agent's weights
+        self.save_model_obj(iteration=current_iteration, model=current_best_agent.network)
+        self.save_state_dict(iteration=current_iteration, state_dict=current_best_agent.network.state_dict())
         self.save_info(info=info, iteration=current_iteration)
         self.save_replay_memory(memory, iteration=current_iteration)
         self.save_log(iteration=current_iteration)
@@ -248,11 +244,11 @@ class Checkpoint:
             if self.compute_elo:
                 if self.verbose:
                     print("📢 Starting background process for Elo computation...")
-                
+
                 # 🔹 Start Elo computation in a background process
                 p = mp.Process(
                     target=_background_compute_elo_and_save,
-                    args=(current_best_agent, f"checkpoints/info.json", self.verbose)
+                    args=(self.best_agent, f"{self.best_path}/info.json", self.verbose)
                 )
                 p.start()  # Runs in background
             else:
