@@ -120,6 +120,24 @@ def evaluator(
 
         logging.debug(f"Completed game {game_idx}/{num_games}")
 
+        # --- Early‑stopping logic based on remaining games ----------------------
+        # If the leading agent already has more wins than the trailing agent
+        # can possibly achieve given the games left, stop the evaluation early.
+        remaining_games = num_games - game_idx
+        if challenger_agent_wins > current_best_agent_wins + remaining_games:
+            logging.info(
+                f"Early stopping: challenger leads {challenger_agent_wins}-{current_best_agent_wins} "
+                f"with only {remaining_games} game(s) left — lead is mathematically unassailable."
+            )
+            break
+        if current_best_agent_wins > challenger_agent_wins + remaining_games:
+            logging.info(
+                f"Early stopping: current best leads {current_best_agent_wins}-{challenger_agent_wins} "
+                f"with only {remaining_games} game(s) left — lead is mathematically unassailable."
+            )
+            break
+        # -----------------------------------------------------------------------
+
     win_percent = challenger_agent_wins/game_idx
 
     # if external evaluation, return number of games challenger agent won

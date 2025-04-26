@@ -104,6 +104,11 @@ def main(args):
         stockfish_progress = {0:[]}
         current_best_version = 0
         self_play_start_from = checkpoint.download_from_blob(blob_name=f"checkpoints/iteration_{iteration_dict['latest_started_checkpoint']}/self_play_games_completed.pkl")
+    elif iteration_dict["latest_completed_checkpoint"] == iteration_dict["latest_started_checkpoint"]:
+        i = iteration_dict["latest_completed_checkpoint"] + 1
+        stockfish_progress = latest_info['stockfish_progress']
+        current_best_version = latest_info['version']
+        self_play_start_from = 0
     else:
         i = iteration_dict['latest_started_checkpoint']
         latest_info = checkpoint.download_from_blob(blob_name=f"checkpoints/iteration_{iteration_dict['latest_completed_checkpoint']}/info.json")
@@ -260,7 +265,15 @@ def main(args):
         stockfish_eval = f'Against Stockfish 5 Level {stockfish_level}, won {s_wins} games, drew {s_draws} games, lost {s_losses} games. ({round(100*s_win_percent, 2)}% wins.)'
 
         logger.info(stockfish_eval)
-        stockfish_progress[stockfish_level].append(win_percent)
+        try:
+            stockfish_progress[stockfish_level].append(win_percent)
+        except KeyError:
+            stockfish_progress[stockfish_level] = []
+            stockfish_progress[stockfish_level].append(win_percent)
+        except Exception as e:
+            print(e)
+            logger.error(e)
+
         if win_percent > 0.55:
             stockfish_level += 1
             stockfish.engine.configure({"Skill Level": stockfish_level})
