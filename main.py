@@ -88,7 +88,7 @@ def main(args):
     logger.info(f'\n\nRunning Experiment on {datetime.now()} with the following configs:')
     logging.getLogger("azure").setLevel(logging.WARNING)
     logging.getLogger("azure.storage").setLevel(logging.WARNING)
-    checkpoint = Checkpoint(verbose=False, compute_elo=False)
+    checkpoint = Checkpoint(verbose=False)
 
     iteration_dict = get_latest_iterations(checkpoint_client=checkpoint)
     if iteration_dict['latest_started_checkpoint'] == 0:
@@ -244,6 +244,8 @@ def main(args):
             max_moves=configs.training.max_moves,
             num_games=configs.evaluation.tournament_games,
             v_resign=self_play_session.v_resign,
+            checkpoint_client=checkpoint,
+            iteration=i,
             win_threshold=configs.evaluation.evaluation_threshold
         )
         self_eval = f'Agent {challenger_agent.version} playing Agent {current_best_agent.version}, won {wins} games, drew {draws} games, lost {losses} games. ({round(100*win_percent, 2)}% wins.)'
@@ -260,6 +262,8 @@ def main(args):
             device=device,
             max_moves=configs.training.max_moves,
             num_games=configs.evaluation.tournament_games,
+            iteration=i,
+            checkpoint_client=checkpoint,
             v_resign=self_play_session.v_resign
         )
         stockfish_eval = f'Against Stockfish 5 Level {stockfish_level}, won {s_wins} games, drew {s_draws} games, lost {s_losses} games. ({round(100*s_win_percent, 2)}% wins.)'

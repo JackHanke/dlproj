@@ -14,6 +14,8 @@ def evaluator(
         device: torch.device,
         max_moves: int,
         num_games: int,
+        checkpoint_client,  # The Checkpoint instance for saving state
+        iteration: int,     # The current iteration number
         v_resign: float, 
         win_threshold: float = 0.55
     ) -> Agent:
@@ -117,6 +119,19 @@ def evaluator(
             else:
                 logging.info("Draw between current best and evaluator")
                 draws += 1
+
+        # Save evaluation state for resuming mid-evaluation
+        eval_state = {
+            'game_idx': game_idx,
+            'challenger_agent_wins': challenger_agent_wins,
+            'draws': draws,
+            'current_best_agent_wins': current_best_agent_wins
+        }
+        checkpoint_client.save_file(
+            obj=eval_state,
+            blob_folder=f"checkpoints/iteration_{iteration}/evaluation",
+            filename="evaluation_state.pkl"
+        )
 
         logging.debug(f"Completed game {game_idx}/{num_games}")
 
