@@ -152,9 +152,9 @@ def evaluator(
 
     # For Stockfish evaluation return stats
     if current_best_agent.version == 'Stockfish':
-        return challenger_agent_wins, draws, current_best_agent_wins, win_percent, game_idx
+        return challenger_agent_wins, draws, current_best_agent_wins, win_percent, num_games
 
-    logging.info(f'Finished {game_idx} games. Challenger: {challenger_agent_wins} wins, Current Best: {current_best_agent_wins} wins.')
+    logging.info(f'Finished {num_games} games. Challenger: {challenger_agent_wins} wins, Current Best: {current_best_agent_wins} wins.')
 
     # Otherwise return the better agent
     if challenger_agent_wins >= current_best_agent_wins:
@@ -163,4 +163,4 @@ def evaluator(
     else:
         return_agent = current_best_agent
 
-    return return_agent, challenger_agent_wins, draws, current_best_agent_wins, win_percent, game_idx
+    return return_agent, challenger_agent_wins, draws, current_best_agent_wins, win_percent, num_games

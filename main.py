@@ -117,13 +117,13 @@ def main(args):
         stockfish_level = 0
     elif iteration_dict["latest_completed_checkpoint"] == iteration_dict["latest_started_checkpoint"]:
         stockfish_level = checkpoint.download_from_blob(
-            blob_name=f"checkpoints/iterations_{iteration_dict['latest_completed_checkpoint']}/info.json"
+            blob_name=f"checkpoints/iteration_{iteration_dict['latest_completed_checkpoint']}/info.json"
         )['stockfish_level']
         i = iteration_dict["latest_completed_checkpoint"] + 1
         self_play_start_from = 0
     else:
         stockfish_level = checkpoint.download_from_blob(
-            blob_name=f"checkpoints/iterations_{iteration_dict['latest_completed_checkpoint']}/info.json"
+            blob_name=f"checkpoints/iteration_{iteration_dict['latest_completed_checkpoint']}/info.json"
         )['stockfish_level']
         i = iteration_dict['latest_started_checkpoint']
         self_play_start_from = checkpoint.download_from_blob(
@@ -180,6 +180,11 @@ def main(args):
                 for state, policy, reward in memory_list:
                     transition_queue.put((state, policy, reward))
                 logger.info(f"Loaded {len(memory_list)} items into transition queue for iteration {i}.")
+            elif checkpoint.blob_exists(f"checkpoints/iteration_{i-1}/replay_memory.pkl"):
+                memory_list = checkpoint.load_replay_memory(iteration=i-1)
+                for state, policy, reward in memory_list:
+                    transition_queue.put((state, policy, reward))
+                logger.info(f"Loaded {len(memory_list)} items into transition queue for iteration {i} from iteration {i-1}.")
             else:
                 logger.info(f"No saved ReplayMemory found for iteration {i}, starting empty.")
 
