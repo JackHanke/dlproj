@@ -108,15 +108,23 @@ def main(args):
     if iteration_dict['latest_started_checkpoint'] == 0:
         i = 1
         self_play_start_from = 0
+        stockfish_level = 0
     elif iteration_dict['latest_started_checkpoint'] == 1 and iteration_dict['latest_completed_checkpoint'] == 0:
         i = 1
         self_play_start_from = checkpoint.download_from_blob(
             blob_name=f"checkpoints/iteration_{iteration_dict['latest_started_checkpoint']}/self_play_games_completed.pkl"
         )
+        stockfish_level = 0
     elif iteration_dict["latest_completed_checkpoint"] == iteration_dict["latest_started_checkpoint"]:
+        stockfish_level = checkpoint.download_from_blob(
+            blob_name=f"checkpoints/iterations_{iteration_dict['latest_completed_checkpoint']}/info.json"
+        )['stockfish_level']
         i = iteration_dict["latest_completed_checkpoint"] + 1
         self_play_start_from = 0
     else:
+        stockfish_level = checkpoint.download_from_blob(
+            blob_name=f"checkpoints/iterations_{iteration_dict['latest_completed_checkpoint']}/info.json"
+        )['stockfish_level']
         i = iteration_dict['latest_started_checkpoint']
         self_play_start_from = checkpoint.download_from_blob(
             blob_name=f"checkpoints/iteration_{iteration_dict['latest_started_checkpoint']}/self_play_games_completed.pkl"
