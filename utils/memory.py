@@ -1,50 +1,34 @@
-import torch.multiprocessing as mp
-from collections import namedtuple
 import random
 import torch
+from collections import namedtuple
 from typing import List, Dict, Literal
 
-Transition = namedtuple(
-    "Transition",
-    ('state', 'policy', 'game_result') 
-)
+Transition = namedtuple('Transition', ('state', 'policy', 'game_result'))
 
 class ReplayMemory:
     def __init__(self, maxlen: int):
-        self.manager = mp.Manager()
-        self.memory = self.manager.list()  # Shared list between processes
-        self.lock = self.manager.Lock()      # Shared lock via manager
+        self.memory = []  # Pure Python list
         self.maxlen = maxlen
-
-    def __getstate__(self):
-        state = self.__dict__.copy()
-        state.pop("manager", None)  # Manager is not picklable
-        return state
-
-    def __setstate__(self, state):
-        self.__dict__.update(state)
-
-    def load_memory(self, memory: list) -> None:
-        for item in memory:
-            with self.lock:
-                if len(self.memory) >= self.maxlen:
-                    self.memory.pop(0)  # Maintain fixed size
-                self.memory.append(item)
 
     def push(self, *args) -> None:
         """Stores a new transition in memory."""
-        with self.lock:
+        if len(self.memory) >= self.maxlen:
+            self.memory.pop(0)
+        self.memory.append(Transition(*args))
+
+    def load_memory(self, memory_list: List[Transition]) -> None:
+        """Loads a list of transitions into memory."""
+        for item in memory_list:
             if len(self.memory) >= self.maxlen:
-                self.memory.pop(0)  # Maintain fixed size
-            self.memory.append(Transition(*args))
+                self.memory.pop(0)
+            self.memory.append(item)
 
     def sample(self, batch_size: int) -> List[Transition]:
-        """Samples a batch of transitions from memory safely."""
-        with self.lock:
-            return random.sample(list(self.memory), batch_size)
+        """Samples a batch of transitions from memory."""
+        return random.sample(self.memory, batch_size)
 
     def sample_in_batches(self, batch_size: int) -> Dict[Literal['state_batch', 'policy_batch', 'reward_batch'], torch.Tensor]:
-        """Samples a batch and splits them into separate tensors."""
+        """Samples a batch and returns as separate tensors."""
         transition = self.sample(batch_size=batch_size)
         if not transition:
             return {
@@ -60,6 +44,5 @@ class ReplayMemory:
         }
 
     def __len__(self) -> int:
-        """Returns the current size of the memory buffer."""
-        with self.lock:
-            return len(self.memory)
+        """Returns the current size of the memory."""
+        return len(self.memory)

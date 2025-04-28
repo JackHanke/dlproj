@@ -9,41 +9,54 @@ from utils.agent import Agent
 logging.basicConfig(filename='dem0.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def evaluator(
-        challenger_agent: Agent, 
-        current_best_agent: Agent, 
-        device: torch.device,
-        max_moves: int,
-        num_games: int,
-        checkpoint_client,  # The Checkpoint instance for saving state
-        iteration: int,     # The current iteration number
-        v_resign: float, 
-        win_threshold: float = 0.55
-    ) -> Agent:
-    # watch external evaluation
-    if current_best_agent.version == 'Stockfish':
-        env = chess_v6.env(render_mode=None)  
-    else:
-        env = chess_v6.env(render_mode=None)  
-        # env = chess_v6.env(render_mode=None)  
+    challenger_agent: Agent, 
+    current_best_agent: Agent, 
+    device: torch.device,
+    max_moves: int,
+    num_games: int,
+    checkpoint_client,
+    iteration: int,
+    v_resign: float, 
+    win_threshold: float = 0.55
+) -> Agent:
 
-    # env = chess_v6.env()
+    env = chess_v6.env(render_mode=None)
     player_to_int = {"player_0": 1, "player_1": -1}
 
     challenger_agent_wins = 0
     draws = 0
     current_best_agent_wins = 0
+    start_from_game = 1
+
+    # Determine evaluation state path based on agent version
+    if current_best_agent.version == 'Stockfish':
+        eval_state_blob = f"checkpoints/iteration_{iteration}/stockfish_evaluation/stockfish_evaluation_state.pkl"
+    else:
+        eval_state_blob = f"checkpoints/iteration_{iteration}/evaluation/evaluation_state.pkl"
+
+    # 🔥 Try loading cached evaluation state
+    if checkpoint_client.blob_exists(eval_state_blob):
+        try:
+            eval_state = checkpoint_client.download_from_blob(eval_state_blob)
+            challenger_agent_wins = eval_state['challenger_agent_wins']
+            draws = eval_state['draws']
+            current_best_agent_wins = eval_state['current_best_agent_wins']
+            start_from_game = eval_state['game_idx'] + 1  # start from the next game
+            logging.info(f"✅ Resuming evaluation from Game {start_from_game}. Previous wins: {challenger_agent_wins}, Draws: {draws}, Losses: {current_best_agent_wins}")
+        except Exception as e:
+            logging.warning(f"⚠️ Failed to load evaluation state: {e}. Starting fresh.")
+    else:
+        logging.info(f"🆕 No previous evaluation found. Starting fresh.")
 
     threshold_games = round(num_games * win_threshold)
 
-    # Use a tqdm progress bar for the games
-    for game_idx in range(1, num_games+1):
+    for game_idx in range(start_from_game, num_games + 1):
         if challenger_agent_wins >= threshold_games or current_best_agent_wins >= threshold_games:
             break
-        
-        logging.debug(f'Starting game #{game_idx}')
+
+        logging.info(f'Starting game #{game_idx}')
         env.reset()
 
-        # Assign agents based on game index (alternate colors)
         if (game_idx % 2) == 0:
             player_to_agent = {
                 "player_0": challenger_agent,
@@ -55,119 +68,99 @@ def evaluator(
                 "player_1": challenger_agent
             }
 
-        logging.debug(f'{player_to_agent["player_0"].version} vs. {player_to_agent["player_1"].version}')
-        # print(f'{player_to_agent["player_0"].version} vs. {player_to_agent["player_1"].version}')
-
         winning_player = None
 
-        # Use a tqdm progress bar for moves within the game
         move_bar = tqdm(range(1, max_moves + 1), desc=f"Game {game_idx} moves", leave=True)
         for move_idx in move_bar:
             current_player = env.agent_selection
-            move_bar.set_description(f"Evaluator, Game {game_idx}: Move {move_idx} by Player {current_player}.")
+            move_bar.set_description(f"Evaluator, Game {game_idx}: Move {move_idx} by {current_player}.")
             observation, reward, termination, truncation, info = env.last()
 
-            # Check for game termination
             if termination:
-                # env.rewards[current_player] is 1 if the current player just won, -1 if lost, 0 if draw
                 game_result = reward
                 last_player = player_to_int[current_player]
                 winning_player = game_result * last_player
-                logging.debug(f"Game terminated for {current_player} at move {move_idx}. {winning_player} is the winner. Reward = {reward}, Last Player = {last_player}, is truncated: {truncation}")
                 break
 
             if truncation:
                 winning_player = 0
                 last_player = player_to_int[current_player]
-                logging.debug(f"Game truncated for {current_player} at move {move_idx}. {winning_player} is the winner. Reward = {reward}, Last Player = {last_player}")
                 break
 
-            tau = 0  # No exploration during evaluation
+            tau = 0
             agent = player_to_agent[current_player]
             selected_move, v = agent.inference(board_state=deepcopy(env.board), starting_agent=current_player, device=device, tau=tau)
 
-            # Resignation logic
             if move_idx > 10 and v < v_resign:
                 winning_player = -1 * player_to_int[current_player]
-                logging.debug(f"Player {current_player} resigned at move {move_idx} with value {v:.3f}")
                 break
 
             env.step(selected_move)
 
-        # If no termination or resignation occurred, consider the game a draw.
         if winning_player is None:
             winning_player = 0
 
-        # Update win counts based on agent colors
-        if (game_idx % 2) == 0:  # Challenger is white
+        if (game_idx % 2) == 0:
             if winning_player == 1:
                 challenger_agent_wins += 1
-                logging.info("Challenger one.")
             elif winning_player == -1:
                 current_best_agent_wins += 1
-                logging.info("Current best one.")
             else:
-                logging.info("Draw between current best and evaluator")
                 draws += 1
-        else:  # Challenger is black
+        else:
             if winning_player == -1:
                 challenger_agent_wins += 1
-                logging.info("Challenger one.")
             elif winning_player == 1:
                 current_best_agent_wins += 1
-                logging.info("Current best one.")
             else:
-                logging.info("Draw between current best and evaluator")
                 draws += 1
 
-        # Save evaluation state for resuming mid-evaluation
+        # 🔥 Save after every game
         eval_state = {
             'game_idx': game_idx,
             'challenger_agent_wins': challenger_agent_wins,
             'draws': draws,
             'current_best_agent_wins': current_best_agent_wins
         }
-        checkpoint_client.save_file(
-            obj=eval_state,
-            blob_folder=f"checkpoints/iteration_{iteration}/evaluation",
-            filename="evaluation_state.pkl"
-        )
+        # Save to appropriate path based on agent version
+        if current_best_agent.version == 'Stockfish':
+            checkpoint_client.save_file(
+                obj=eval_state,
+                blob_folder=f"checkpoints/iteration_{iteration}/stockfish_evaluation",
+                filename="stockfish_evaluation_state.pkl"
+            )
+        else:
+            checkpoint_client.save_file(
+                obj=eval_state,
+                blob_folder=f"checkpoints/iteration_{iteration}/evaluation",
+                filename="evaluation_state.pkl"
+            )
 
-        logging.debug(f"Completed game {game_idx}/{num_games}")
+        logging.info(f"Completed game {game_idx}/{num_games}")
 
-        # --- Early‑stopping logic based on remaining games ----------------------
-        # If the leading agent already has more wins than the trailing agent
-        # can possibly achieve given the games left, stop the evaluation early.
+        # --- Early‑stopping logic ----------------------
         remaining_games = num_games - game_idx
         if challenger_agent_wins > current_best_agent_wins + remaining_games:
-            logging.info(
-                f"Early stopping: challenger leads {challenger_agent_wins}-{current_best_agent_wins} "
-                f"with only {remaining_games} game(s) left — lead is mathematically unassailable."
-            )
+            logging.info("Early stopping: Challenger guaranteed win.")
             break
         if current_best_agent_wins > challenger_agent_wins + remaining_games:
-            logging.info(
-                f"Early stopping: current best leads {current_best_agent_wins}-{challenger_agent_wins} "
-                f"with only {remaining_games} game(s) left — lead is mathematically unassailable."
-            )
+            logging.info("Early stopping: Current best guaranteed win.")
             break
-        # -----------------------------------------------------------------------
+        # ------------------------------------------------
 
-    win_percent = challenger_agent_wins/game_idx
+    win_percent = challenger_agent_wins / (start_from_game + num_games - start_from_game)
 
-    # if external evaluation, return number of games challenger agent won
+    # For Stockfish evaluation return stats
     if current_best_agent.version == 'Stockfish':
         return challenger_agent_wins, draws, current_best_agent_wins, win_percent, game_idx
 
-    logging.debug(f'Played {(game_idx + 1)} games. Challenger Agent points: {challenger_agent_wins}, Current Best Agent points: {current_best_agent_wins}')
+    logging.info(f'Finished {game_idx} games. Challenger: {challenger_agent_wins} wins, Current Best: {current_best_agent_wins} wins.')
 
-
-    # else return best agent
+    # Otherwise return the better agent
     if challenger_agent_wins >= current_best_agent_wins:
-        logging.info(f'Challenger agent v{challenger_agent.version} wins!')
-        return_agent = challenger_agent  
+        logging.info(f"✅ Challenger v{challenger_agent.version} is the new best agent!")
+        return_agent = challenger_agent
     else:
         return_agent = current_best_agent
 
     return return_agent, challenger_agent_wins, draws, current_best_agent_wins, win_percent, game_idx
-

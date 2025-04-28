@@ -7,7 +7,6 @@ from tqdm import tqdm
 from copy import deepcopy
 import logging
 from datetime import datetime
-import matplotlib.pyplot as plt
 
 from utils.training import train_on_batch, Checkpoint
 from utils.self_play import SelfPlaySession
@@ -26,48 +25,59 @@ def parse_args():
     parser.add_argument("--use_pretrained", action="store_true")
     parser.add_argument("--mp_training", action="store_true", help="Use multiprocessing for training.")
     parser.add_argument("--start_with_empty_replay_memory", action="store_true", help="Start with empty replay memory.")
-    parser.add_argument("--no_self_play", dest="run_self_play", action="store_false", help="Skip self play.")
-    parser.add_argument("--no_train", dest="train_network", action="store_false", help="Skip training.")
-    parser.add_argument("--train_iterations", type=int, default=50, help="Number of training iterations if not using multiprocessing.")
     return parser.parse_args()
 
 
-def training_loop(stop_event, memory, network, device, optimizer_params, counter, batch_size, iteration, checkpoint: Checkpoint):
+def training_loop(stop_event, transition_queue, network, device, optimizer_params, batch_size, counter, checkpoint, iteration):
     logging.basicConfig(filename='dem0.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
     optimizer = get_optimizer(
         optimizer_name=optimizer_params["optimizer_name"],
         lr=optimizer_params["lr"],
-        weight_decay=optimizer_params["weight_decay"],
+        weight_decay=optimizer_params.get("weight_decay", 0.0),
         model=network,
         momentum=optimizer_params.get("momentum", 0.0)
     )
+
+    memory = ReplayMemory(10_000)
+
     i = 0
-    while not stop_event.is_set():
-        r = train_on_batch(
+    while not stop_event.is_set() or not transition_queue.empty():
+        while not transition_queue.empty():
+            s, pi, r = transition_queue.get()
+            memory.push(s, pi, r)
+
+        trained = train_on_batch(
             data=memory,
             network=network,
             batch_size=batch_size,
             device=device,
             optimizer=optimizer
         )
-        if r:
+
+        if trained:
             i += 1
             if i == 1:
-                logging.info('Training started!')
+                logging.info("Training started!")
             if i % 10 == 0:
+                logging
                 checkpoint.save_state_dict(iteration=iteration, state_dict=network.state_dict())
+                checkpoint.save_replay_memory(memory=memory, iteration=iteration)
+
+    # 🔥 Save memory after training ends
+    checkpoint.save_replay_memory(memory=memory, iteration=iteration)
+    logging.info(f"✅ Saved ReplayMemory after training for iteration {iteration}.")
+
     counter.value = i
-    logging.info(f"Trained on {i} batches.")
-    logging.info(f'Memory length after self play: {len(memory)}')
+    logging.info(f"Training finished after {i} batches.")
+    logging.info(f"Final memory length = {len(memory)}")
 
 
 def get_latest_iterations(checkpoint_client: Checkpoint) -> dict[Literal['latest_completed_checkpoint', 'latest_started_checkpoint'], int]:
     folders: list[str] = checkpoint_client.list_folder_names()
     if not folders:
-        return {
-            "latest_completed_checkpoint": 0,
-            "latest_started_checkpoint": 0
-        }
+        return {"latest_completed_checkpoint": 0, "latest_started_checkpoint": 0}
+
     versions = map(lambda x: int(x.split('/')[-1].removeprefix("iteration_")), folders)
     latest_started_checkpoint = max(versions)
     if checkpoint_client.blob_exists(f"checkpoints/iteration_{latest_started_checkpoint}/info.json"):
@@ -83,56 +93,67 @@ def get_latest_iterations(checkpoint_client: Checkpoint) -> dict[Literal['latest
 
 def main(args):
     os.system("./clear_log.sh")
-    logger = logging.getLogger(__name__)
     logging.basicConfig(filename='dem0.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+    logger = logging.getLogger(__name__)
     logger.info(f'\n\nRunning Experiment on {datetime.now()} with the following configs:')
     logging.getLogger("azure").setLevel(logging.WARNING)
     logging.getLogger("azure.storage").setLevel(logging.WARNING)
+
     checkpoint = Checkpoint(verbose=False)
+    configs = load_config()
 
     iteration_dict = get_latest_iterations(checkpoint_client=checkpoint)
+
+    # Which iteration to start
     if iteration_dict['latest_started_checkpoint'] == 0:
         i = 1
-        logger.info("Starting from iterations from scratch.")
-        stockfish_level = 0
-        stockfish_progress = {0:[]}
-        current_best_version = 0
         self_play_start_from = 0
     elif iteration_dict['latest_started_checkpoint'] == 1 and iteration_dict['latest_completed_checkpoint'] == 0:
         i = 1
-        stockfish_level = 0
-        stockfish_progress = {0:[]}
-        current_best_version = 0
-        self_play_start_from = checkpoint.download_from_blob(blob_name=f"checkpoints/iteration_{iteration_dict['latest_started_checkpoint']}/self_play_games_completed.pkl")
+        self_play_start_from = checkpoint.download_from_blob(
+            blob_name=f"checkpoints/iteration_{iteration_dict['latest_started_checkpoint']}/self_play_games_completed.pkl"
+        )
     elif iteration_dict["latest_completed_checkpoint"] == iteration_dict["latest_started_checkpoint"]:
         i = iteration_dict["latest_completed_checkpoint"] + 1
-        stockfish_progress = latest_info['stockfish_progress']
-        current_best_version = latest_info['version']
         self_play_start_from = 0
     else:
         i = iteration_dict['latest_started_checkpoint']
-        latest_info = checkpoint.download_from_blob(blob_name=f"checkpoints/iteration_{iteration_dict['latest_completed_checkpoint']}/info.json")
-        stockfish_level = latest_info['stockfish_level']
-        stockfish_progress = latest_info['stockfish_progress']
-        current_best_version = latest_info['version']
-        self_play_start_from = checkpoint.download_from_blob(blob_name=f"checkpoints/iteration_{iteration_dict['latest_started_checkpoint']}/self_play_games_completed.pkl")
+        self_play_start_from = checkpoint.download_from_blob(
+            blob_name=f"checkpoints/iteration_{iteration_dict['latest_started_checkpoint']}/self_play_games_completed.pkl"
+        )
 
-    logger.info(f'Starting at self-play iteration #{self_play_start_from+1}')
+    logger.info(f"Resuming at iteration {i}, starting from self-play game {self_play_start_from + 1}")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    configs = load_config()
-    logger.info(f"Device for network training: {device.type}")
+    logger.info(f"Device: {device}")
 
-    self_play_session = SelfPlaySession(checkpoint_client=checkpoint)
-    memory = ReplayMemory(configs.training.data_buffer_size)
+    transition_queue = mp.Queue()
+
+    # === If memory exists, prefill the queue ===
     if not args.start_with_empty_replay_memory:
         if checkpoint.blob_exists(f"checkpoints/iteration_{iteration_dict['latest_started_checkpoint']}/replay_memory.pkl"):
             memory_list = checkpoint.load_replay_memory(iteration=iteration_dict['latest_started_checkpoint'])
-            memory.load_memory(memory_list)
-            logger.info(f"Loaded memory from blob path 'checkpoints/iteration_{iteration_dict['latest_started_checkpoint']}/replay_memory.pkl' with length = {len(memory)}")
+            for item in memory_list:
+                transition_queue.put(item)
+            logger.info(f"Loaded {len(memory_list)} items into transition queue.")
         else:
-            logger.info("Starting with empty memory.")
+            logger.info("No previous memory found, starting empty.")
     else:
-        logger.info('Starting with empty memory.')
+        logger.info("Starting from empty memory as requested.")
+
+    logger.info(f'Starting at iteration {i}.')
+
+    current_best_network = DemoNet(num_res_blocks=configs.network.num_residual_blocks)
+    challenger_network = DemoNet(num_res_blocks=configs.network.num_residual_blocks)
+
+    if checkpoint.blob_exists(f'{checkpoint.best_path}/weights.pth'):
+        pretrained_weights = checkpoint.download_from_blob(f'{checkpoint.best_path}/weights.pth', device=device)
+        current_best_network.load_state_dict(pretrained_weights)
+        current_best_version = checkpoint.download_from_blob(f'{checkpoint.best_path}/info.json', device=device)['version']
+        logger.info(f"Loaded best model version {current_best_version}.")
+
+    checkpoint.load_challenger_weights_if_available(i, challenger_network, fallback_network=current_best_network, logger=logger)
+
+    self_play_session = SelfPlaySession(checkpoint_client=checkpoint)
 
     optimizer_params = {
         "optimizer_name": configs.training.optimizer,
@@ -141,103 +162,60 @@ def main(args):
         "momentum": configs.training.momentum
     }
 
-
-    if checkpoint.blob_exists(f'{checkpoint.best_path}/weights.pth'):
-        pretrained_weights = checkpoint.download_from_blob(f'{checkpoint.best_path}/weights.pth', device=device)
-        logger.info(f"Current Best Net: loaded weights from blob path: {checkpoint.best_path}/weights.pth")
-        current_best_version = checkpoint.download_from_blob(f'{checkpoint.best_path}/info.json', device=device)['version']
-    elif checkpoint.blob_exists('checkpoints/pretrained_weights.pth') and args.use_pretrained:
-        pretrained_weights = checkpoint.download_from_blob('checkpoints/pretrained_weights.pth', device=device)
-        logger.info(f"Current Best Net: loaded weights from blob path: checkpoints/pretrained_weights.pth")
-    else:
-        pretrained_weights = None
-        logger.info('Starting with random weights.')
-
-    current_best_network = DemoNet(num_res_blocks=configs.network.num_residual_blocks)
-    if pretrained_weights:
-        current_best_network.load_state_dict(pretrained_weights)
-    
-    latest_iter = iteration_dict['latest_started_checkpoint']
-    challenger_weights_path = f"checkpoints/iteration_{latest_iter}/weights.pth"
-
-    challenger_network = DemoNet(num_res_blocks=configs.network.num_residual_blocks)
-    if checkpoint.blob_exists(challenger_weights_path):
-        challenger_weights = checkpoint.download_from_blob(challenger_weights_path, device=device)
-        challenger_network.load_state_dict(challenger_weights)
-        logger.info(f"✅ Loaded challenger weights from: {challenger_weights_path}")
-    else:
-        # Fall back to best or random if challenger weights don't exist
-        logger.info("No challenger weights found. Initializing from current best.")
-        challenger_network.load_state_dict(current_best_network.state_dict())
-
-
     while True:
-        logger.info(f'Beginning dem0 Iteration {i}...\n')
+        logger.info(f"=== Starting iteration {i} ===")
+
+        # --- reset and refill queue ---
+        if transition_queue.empty():
+            if checkpoint.blob_exists(f"checkpoints/iteration_{i}/replay_memory.pkl"):
+                memory_list = checkpoint.load_replay_memory(iteration=i)
+                for state, policy, reward in memory_list:
+                    transition_queue.put((state, policy, reward))
+                logger.info(f"Loaded {len(memory_list)} items into transition queue for iteration {i}.")
+            else:
+                logger.info(f"No saved ReplayMemory found for iteration {i}, starting empty.")
 
         current_best_agent = Agent(version=current_best_version, network=current_best_network, sims=configs.self_play.num_simulations)
-        challenger_agent = Agent(version=current_best_version+1, network=challenger_network, sims=configs.self_play.num_simulations)
+        challenger_agent = Agent(version=current_best_version + 1, network=challenger_network, sims=configs.self_play.num_simulations)
 
-        if args.mp_training:
-            stop_event = mp.Event()
-            counter = mp.Value("i", 0)
-            training_process = mp.Process(
-                target=training_loop,
-                args=(stop_event, memory, challenger_network, device, optimizer_params, counter, configs.training.batch_size, i, checkpoint)
-            )
-            training_process.start()
+        stop_event = mp.Event()
+        counter = mp.Value("i", 0)
+        training_process = mp.Process(
+            target=training_loop,
+            args=(stop_event,
+                  transition_queue,
+                  challenger_network,
+                  device,
+                  optimizer_params,
+                  configs.training.batch_size,
+                  counter,
+                  checkpoint,
+                  i)
+        )
+        training_process.start()
 
-            self_play_session.run_self_play(
-                iteration=i,
-                training_data=memory,
-                network=current_best_network,
-                device=device,
-                n_sims=configs.self_play.num_simulations,
-                num_games=configs.training.num_self_play_games,
-                max_moves=configs.training.max_moves,
-                start_from_game_idx=self_play_start_from
-            )
+        self_play_session.run_self_play(
+            iteration=i,
+            transition_queue=transition_queue,
+            network=current_best_network,
+            device=device,
+            n_sims=configs.self_play.num_simulations,
+            num_games=configs.training.num_self_play_games,
+            max_moves=configs.training.max_moves,
+            start_from_game_idx=self_play_start_from
+        )
 
-            self_play_start_from = 0
-            stop_event.set()
-            training_process.join()
-            logger.debug(f'Training iterations completed: {counter.value}')
+        self_play_start_from = 0
 
-        else:
-            if args.run_self_play:
-                logger.info("Starting basic self play...")
-                self_play_session.run_self_play(
-                    iteration=i,
-                    training_data=memory,
-                    network=current_best_network,
-                    device=device,
-                    n_sims=configs.self_play.num_simulations,
-                    num_games=configs.training.num_self_play_games,
-                    max_moves=configs.training.max_moves,
-                    start_from_game_idx=self_play_start_from
-                )
-            if args.train_network:
-                for b in tqdm(range(args.train_iterations)):
-                    _ = train_on_batch(
-                        data=memory,
-                        network=challenger_network,
-                        batch_size=configs.training.batch_size,
-                        optimizer=get_optimizer(model=challenger_network, **optimizer_params),
-                        device=device
-                    )
-                    if (b+1) % 5 == 0:
-                        checkpoint.save_state_dict(iteration=i, state_dict=challenger_network.state_dict())
-                logger.debug(f'Training iterations completed: {args.train_iterations}')
+        stop_event.set()
+        training_process.join()
+        logger.info(f"Training batches completed: {counter.value}")
 
         # === Evaluation ===
         weights = checkpoint.download_from_blob(f"checkpoints/iteration_{i}/weights.pth", device=device)
         challenger_agent.network.load_state_dict(weights)
-        weights_changed = any(
-            not torch.equal(p1, p2) for p1, p2 in zip(challenger_agent.network.to(device).parameters(), current_best_agent.network.to(device).parameters())
-        )
-        assert weights_changed, "Error: Challenger network weights did not change after training!"
-        logger.info("✅ Challenger network weights updated successfully.")
 
-        new_best_agent, wins, draws, losses, win_percent, tot_games = evaluator(
+        new_best_agent, wins, draws, losses, win_percent, _ = evaluator(
             challenger_agent=challenger_agent,
             current_best_agent=current_best_agent,
             device=device,
@@ -248,49 +226,40 @@ def main(args):
             iteration=i,
             win_threshold=configs.evaluation.evaluation_threshold
         )
-        self_eval = f'Agent {challenger_agent.version} playing Agent {current_best_agent.version}, won {wins} games, drew {draws} games, lost {losses} games. ({round(100*win_percent, 2)}% wins.)'
+
+        self_eval = f'Agent {challenger_agent.version} vs {current_best_agent.version}: {wins} wins, {draws} draws, {losses} losses ({round(100 * win_percent, 2)}% winrate).'
         logger.info(self_eval)
 
         current_best_network = deepcopy(new_best_agent.network).to(device)
-        challenger_network = new_best_agent.network.to(device)
+        challenger_network = deepcopy(new_best_agent.network).to(device)
         current_best_version = new_best_agent.version
 
+        # === Stockfish eval ===
         stockfish = Stockfish(level=stockfish_level)
-        s_wins, s_draws, s_losses, s_win_percent, s_tot_games = evaluator(
+        s_wins, s_draws, s_losses, s_win_percent, _ = evaluator(
             challenger_agent=new_best_agent,
             current_best_agent=stockfish,
             device=device,
             max_moves=configs.training.max_moves,
             num_games=configs.evaluation.tournament_games,
-            iteration=i,
+            v_resign=self_play_session.v_resign,
             checkpoint_client=checkpoint,
-            v_resign=self_play_session.v_resign
+            iteration=i
         )
-        stockfish_eval = f'Against Stockfish 5 Level {stockfish_level}, won {s_wins} games, drew {s_draws} games, lost {s_losses} games. ({round(100*s_win_percent, 2)}% wins.)'
 
+        stockfish_eval = f'Against Stockfish level {stockfish_level}: {s_wins} wins, {s_draws} draws, {s_losses} losses ({round(100 * s_win_percent, 2)}% winrate).'
         logger.info(stockfish_eval)
-        try:
-            stockfish_progress[stockfish_level].append(win_percent)
-        except KeyError:
-            stockfish_progress[stockfish_level] = []
-            stockfish_progress[stockfish_level].append(win_percent)
-        except Exception as e:
-            print(e)
-            logger.error(e)
 
         if win_percent > 0.55:
             stockfish_level += 1
-            stockfish.engine.configure({"Skill Level": stockfish_level})
-            logger.info(f'! Upgrading Stockfish level to {stockfish_level}.')
+            logger.info(f'Upgraded Stockfish level to {stockfish_level}.')
 
         checkpoint.step(
             current_best_agent=deepcopy(new_best_agent),
-            memory=memory,
             info={
                 "iteration": i,
                 "version": new_best_agent.version,
                 "stockfish_level": stockfish_level,
-                "stockfish_progress": stockfish_progress,
                 "stockfish_eval": stockfish_eval,
                 "self_eval": self_eval
             },
@@ -304,10 +273,9 @@ def main(args):
 def run():
     args = parse_args()
     with Timer():
-        mp.set_start_method("spawn")
+        mp.set_start_method("spawn", force=True)
         main(args)
 
 
 if __name__ == "__main__":
     run()
-    

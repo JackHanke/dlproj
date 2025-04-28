@@ -211,14 +211,13 @@ class Checkpoint:
         data = self.download_from_blob(blob_name)
         return data
 
-    def save_best_stats(self, info: dict, memory: ReplayMemory) -> None:
+    def save_best_stats(self, info: dict) -> None:
         self.save_model_obj(iteration="best")
         self.save_state_dict(iteration="best")
         self.save_info(info=info, iteration="best")
-        self.save_replay_memory(memory, iteration="best")
         self.save_log(iteration='best')
 
-    def step(self, current_best_agent: Agent, memory: ReplayMemory, info: dict, current_iteration: int):
+    def step(self, current_best_agent: Agent, info: dict, current_iteration: int):
         """
         Saves the best model, weights, replay memory, and metadata to Azure Blob Storage.
         """
@@ -227,7 +226,6 @@ class Checkpoint:
         self.save_model_obj(iteration=current_iteration, model=current_best_agent.network)
         self.save_state_dict(iteration=current_iteration, state_dict=current_best_agent.network.state_dict())
         self.save_info(info=info, iteration=current_iteration)
-        self.save_replay_memory(memory, iteration=current_iteration)
         self.save_log(iteration=current_iteration)
         if self.verbose:
             print(f"✅ Checkpoint saved for iteration {current_iteration}")
@@ -239,7 +237,7 @@ class Checkpoint:
             self.iteration = current_iteration  # Update iteration
 
             # 🔹 Upload to Azure
-            self.save_best_stats(info=info, memory=memory)
+            self.save_best_stats(info=info)
 
             # if self.compute_elo:
             #     if self.verbose:
@@ -285,45 +283,30 @@ class Checkpoint:
         else:
             raise ValueError(f"Unsupported file extension for blob: {blob_name}")
 
-    def load_best_checkpoint(self, network, save_local: bool = False, local_dir: str = "local_checkpoints/"):
+    def load_challenger_weights_if_available(self, iteration: int, network: nn.Module, logger, fallback_network: nn.Module = None) -> None:
         """
-        Loads the model, weights, and metadata from Azure Blob Storage.
+        Loads challenger network weights from Azure Blob Storage if available.
+        Falls back to a provided network if challenger weights do not exist.
 
         Args:
-            iteration (int): The model iteration to retrieve.
-            network (torch.nn.Module): The PyTorch model instance to load weights into.
-            save_local (bool): Whether to save the downloaded files locally.
-            local_dir (str): Directory to save the local copy.
-
-        Returns:
-            dict: Metadata (e.g., iteration, elo).
+            iteration (int): The iteration number to load challenger weights from.
+            network (nn.Module): The network object to load the weights into.
+            fallback_network (nn.Module, optional): Network to fall back to if no challenger weights found.
         """
-
-        # 🔹 Download and load weights
-        weights_data = self.download_from_blob(f"checkpoints/weights.pth")
-        weights_buffer = io.BytesIO(weights_data)
-        network.load_state_dict(torch.load(weights_buffer))
-
-        # 🔹 Download and load full model (if needed)
-        model_data = self.download_from_blob(f"checkpoints/model.pth")
-        model_buffer = io.BytesIO(model_data)
-        model = torch.load(model_buffer)
-
-        # 🔹 Download metadata
-        json_data = self.download_from_blob(f"checkpoints/info.json")
-        metadata = json.loads(json_data.decode("utf-8"))
-
-        # 🔹 Save locally if requested
-        if save_local:
-            os.makedirs(local_dir, exist_ok=True)
-            with open(os.path.join(local_dir, "weights.pth"), "wb") as f:
-                f.write(weights_data)
-            with open(os.path.join(local_dir, "model.pth"), "wb") as f:
-                f.write(model_data)
-            with open(os.path.join(local_dir, "info.json"), "w") as f:
-                json.dump(metadata, f, indent=4)
-
-        return metadata, model
+        challenger_blob_path = f"checkpoints/iteration_{iteration}/weights.pth"
+        
+        if self.blob_exists(challenger_blob_path):
+            # Challenger weights found, load them
+            weights = self.download_from_blob(blob_name=challenger_blob_path)
+            network.load_state_dict(weights)
+            logger.info(f"✅ Loaded challenger weights from {challenger_blob_path}")
+        else:
+            # Challenger weights not found, fall back
+            if fallback_network is not None:
+                network.load_state_dict(fallback_network.state_dict())
+                logger.info(f"⚠️ No challenger weights found at {challenger_blob_path}. Loaded fallback network weights.")
+            else:
+                logger.info(f"❌ No challenger weights found at {challenger_blob_path}, and no fallback network provided.")
     
     def blob_exists(self, blob_name: str) -> bool:
         """
