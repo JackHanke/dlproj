@@ -28,7 +28,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def training_loop(stop_event, transition_queue, network, device, optimizer_params, batch_size, counter, checkpoint, iteration):
+def training_loop(stop_event, transition_queue, network, device, optimizer_params, batch_size, counter, checkpoint, iteration, max_replay_memory_size):
     logging.basicConfig(filename='dem0.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
     optimizer = get_optimizer(
@@ -39,7 +39,7 @@ def training_loop(stop_event, transition_queue, network, device, optimizer_param
         momentum=optimizer_params.get("momentum", 0.0)
     )
 
-    memory = ReplayMemory(10_000)
+    memory = ReplayMemory(max_replay_memory_size)
 
     i = 0
     while not stop_event.is_set() or not transition_queue.empty():
@@ -101,6 +101,8 @@ def main(args):
 
     checkpoint = Checkpoint(verbose=False)
     configs = load_config()
+    global MAX_REPLAY_MEMORY_SIZE
+    MAX_REPLAY_MEMORY_SIZE = configs.training.data_buffer_size
 
     iteration_dict = get_latest_iterations(checkpoint_client=checkpoint)
 
@@ -203,7 +205,8 @@ def main(args):
                   configs.training.batch_size,
                   counter,
                   checkpoint,
-                  i)
+                  i,
+                  MAX_REPLAY_MEMORY_SIZE)
         )
         training_process.start()
 
@@ -234,7 +237,6 @@ def main(args):
             device=device,
             max_moves=configs.training.max_moves,
             num_games=configs.evaluation.tournament_games,
-            v_resign=self_play_session.v_resign,
             checkpoint_client=checkpoint,
             iteration=i,
             win_threshold=configs.evaluation.evaluation_threshold
@@ -255,7 +257,6 @@ def main(args):
             device=device,
             max_moves=configs.training.max_moves,
             num_games=configs.evaluation.tournament_games,
-            v_resign=self_play_session.v_resign,
             checkpoint_client=checkpoint,
             iteration=i
         )

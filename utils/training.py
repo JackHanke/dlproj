@@ -239,20 +239,6 @@ class Checkpoint:
             # 🔹 Upload to Azure
             self.save_best_stats(info=info)
 
-            # if self.compute_elo:
-            #     if self.verbose:
-            #         print("📢 Starting background process for Elo computation...")
-
-            #     # 🔹 Start Elo computation in a background process
-            #     p = mp.Process(
-            #         target=_background_compute_elo_and_save,
-            #         args=(self.best_agent, f"{self.best_path}/info.json", self.verbose)
-            #     )
-            #     p.start()  # Runs in background
-            # else:
-            #     if self.verbose:
-            #         print(f"✅ Best Weights have been checkpointed saved for iteration {self.iteration}")
-
     def download_from_blob(self, blob_name: str, device: torch.device = None) -> any:
         """
         Downloads and deserializes a blob (file) from Azure Blob Storage.
@@ -351,28 +337,3 @@ class Checkpoint:
                     break  # Once we find the folder name, no need to go further
 
         return sorted(folder_names)
-
-
-# def _background_compute_elo_and_save(agent: Agent, info_blob_path: str, verbose: bool) -> None:
-#     """
-#     Computes Elo rating and updates metadata in Azure Blob Storage.
-#     """
-#     if verbose:
-#         print("📢 Beginning Elo computation in background process...")
-
-#     agent.compute_bayes_elo()  # Slow function
-
-#     # 🔹 Prepare updated info
-#     info = {"iteration": agent.iteration, "elo": agent.elo}
-
-#     # 🔹 Convert JSON to bytes
-#     json_bytes = json.dumps(info).encode('utf-8')
-
-#     # 🔹 Upload updated JSON file
-#     blob_service_client = BlobServiceClient.from_connection_string(os.environ.get("BLOB_CONNECTION_STRING"))
-#     container_client = blob_service_client.get_container_client("checkpoints")
-#     blob_client = container_client.get_blob_client(info_blob_path)
-#     blob_client.upload_blob(json_bytes, overwrite=True)
-
-#     if verbose:
-#         print(f"✅ Finished Elo computation and saved updated info to {info_blob_path}")

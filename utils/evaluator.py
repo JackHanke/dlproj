@@ -16,7 +16,6 @@ def evaluator(
     num_games: int,
     checkpoint_client,
     iteration: int,
-    v_resign: float, 
     win_threshold: float = 0.55
 ) -> Agent:
 
@@ -27,6 +26,8 @@ def evaluator(
     draws = 0
     current_best_agent_wins = 0
     start_from_game = 1
+
+    challenger_is_white = True if start_from_game % 2 == 0 else False
 
     # Determine evaluation state path based on agent version
     if current_best_agent.version == 'Stockfish':
@@ -57,7 +58,7 @@ def evaluator(
         logging.info(f'Starting game #{game_idx}')
         env.reset()
 
-        if (game_idx % 2) == 0:
+        if challenger_is_white:
             player_to_agent = {
                 "player_0": challenger_agent,
                 "player_1": current_best_agent
@@ -67,6 +68,8 @@ def evaluator(
                 "player_0": current_best_agent,
                 "player_1": challenger_agent
             }
+
+        challenger_is_white = not challenger_is_white
 
         winning_player = None
 
@@ -91,10 +94,6 @@ def evaluator(
             agent = player_to_agent[current_player]
             selected_move, v = agent.inference(board_state=deepcopy(env.board), starting_agent=current_player, device=device, tau=tau)
 
-            if move_idx > 10 and v < v_resign:
-                winning_player = -1 * player_to_int[current_player]
-                break
-
             env.step(selected_move)
 
         if winning_player is None:
@@ -103,16 +102,22 @@ def evaluator(
         if (game_idx % 2) == 0:
             if winning_player == 1:
                 challenger_agent_wins += 1
+                logging.info("Challenger one!")
             elif winning_player == -1:
                 current_best_agent_wins += 1
+                logging.info("Current best one.")
             else:
+                logging.info('Draw')
                 draws += 1
         else:
             if winning_player == -1:
                 challenger_agent_wins += 1
+                logging.info("Challenger one!")
             elif winning_player == 1:
                 current_best_agent_wins += 1
+                logging.info("Current best one.")
             else:
+                logging.info('Draw')
                 draws += 1
 
         # 🔥 Save after every game
@@ -148,7 +153,8 @@ def evaluator(
             break
         # ------------------------------------------------
 
-    win_percent = challenger_agent_wins / (start_from_game + num_games - start_from_game)
+    total_games_played = challenger_agent_wins + current_best_agent_wins + draws
+    win_percent = challenger_agent_wins / total_games_played
 
     # For Stockfish evaluation return stats
     if current_best_agent.version == 'Stockfish':
