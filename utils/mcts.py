@@ -90,6 +90,8 @@ def is_game_over(board: chess.Board) -> bool:
         return True
     if board.is_insufficient_material() or board.can_claim_draw():
         return True
+    if board.is_game_over():
+        return True
     return False
 
 
@@ -126,7 +128,7 @@ def create_pi_vector(node: Node, tau: float):
 
 # --------------------------------------------------------------------------
 # 1) Selection: find a leaf node by following UCB/PUCT from the root
-def select_leaf_node(root: Node, c_puct: float = 3.0) -> Node:
+def select_leaf_node(root: Node, c_puct: float = 2.5) -> Node:
     current = root
     while len(current.children) > 0:
         # Not a leaf, so pick the child with the best UCB score
@@ -251,7 +253,7 @@ def mcts(
     device: torch.device,
     sims: int = 100,
     batch_size: int = 8,
-    c_puct: float = 3.0,
+    c_puct: float = 2.5,
     tau: float = 1.0,
     inference_mode: bool = False
 ):
@@ -267,6 +269,7 @@ def mcts(
     inference_mode: If True, pick argmax instead of sampling from pi
     """
     net.to(device)
+    net.eval()
 
     # Create the root node
     board_history = np.zeros((8, 8, 104), dtype=bool)

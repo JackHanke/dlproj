@@ -75,12 +75,14 @@ class SelfPlaySession:
 
             # Push transitions to queue
             for state, policy, player in zip(game_states, move_policies, players):
-                if player == winning_player:
+                if player.item() == winning_player:
                     adjusted_reward = 1
                 elif winning_player == 0:
                     adjusted_reward = 0
-                else:
+                elif player.item() == -winning_player:
                     adjusted_reward = -1
+                else:
+                    raise ValueError
 
                 transition_queue.put((
                     state.float().permute(2, 0, 1).detach().cpu(),

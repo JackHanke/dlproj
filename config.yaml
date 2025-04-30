@@ -10,7 +10,7 @@ training:
   training_steps: 700000
   num_self_play_games: 20
   optimizer: "adam"
-  data_buffer_size: 10000
+  data_buffer_size: 50000
   checkpoint_interval: 1000
   evaluation_games: 20
   max_moves: 300
@@ -20,15 +20,11 @@ network:
   num_filters: 256
 
 self_play:
-  num_simulations: 750
+  num_simulations: 500
   temperature:
     initial_moves: 30
   resign_threshold: -0.9
   disable_resignation_fraction: 0.1
-
-mcts:
-  cpuct: 1.0
-  num_threads: 4
 
 evaluation:
   tournament_games: 20

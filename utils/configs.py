@@ -49,12 +49,6 @@ class SelfPlayConfig:
 
 
 @dataclass
-class MCTSConfig:
-    cpuct: float
-    num_threads: int
-
-
-@dataclass
 class EvaluationConfig:
     tournament_games: int
     time_per_move: int  # seconds
@@ -66,7 +60,6 @@ class Config:
     training: TrainingConfig
     network: NetworkConfig
     self_play: SelfPlayConfig
-    mcts: MCTSConfig
     evaluation: EvaluationConfig
 
 
@@ -105,6 +98,5 @@ def load_config(file_path: str = 'config.yaml') -> Config:
             resign_threshold=raw_config["self_play"]["resign_threshold"],
             disable_resignation_fraction=raw_config["self_play"]["disable_resignation_fraction"],
         ),
-        mcts=MCTSConfig(**raw_config["mcts"]),
         evaluation=EvaluationConfig(**raw_config["evaluation"]),
     )
