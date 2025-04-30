@@ -50,7 +50,7 @@ class SelfPlaySession:
                     last_player = player_to_int[current_player]
                     game_result = reward
                     winning_player = game_result * last_player
-                    move_bar.set_description(f"Game ended, winner: {winning_player} (reward: {reward})")
+                    move_bar.set_description(f"Game ended, winner: {winning_player} (reward: {reward} for last player = {last_player})")
                     break
 
                 state = observation['observation']

@@ -79,15 +79,10 @@ def evaluator(
             move_bar.set_description(f"Evaluator, Game {game_idx}: Move {move_idx} by {current_player}.")
             observation, reward, termination, truncation, info = env.last()
 
-            if termination:
+            if termination or truncation:
                 game_result = reward
                 last_player = player_to_int[current_player]
                 winning_player = game_result * last_player
-                break
-
-            if truncation:
-                winning_player = 0
-                last_player = player_to_int[current_player]
                 break
 
             tau = 0

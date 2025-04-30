@@ -26,21 +26,22 @@ def train_on_batch(
     optimizer: Union[optim.Adam, optim.SGD],
     policy_weight: float = 1.0,
     value_weight: float = 1.0
-) -> bool:
+) -> tuple[bool, float, int]:
     network.to(device)
     network.train()
+
     if len(data) <= batch_size * 2:
-        return False
-    # Zero grad
+        return False, 0.0
+
     optimizer.zero_grad()
-    # Get batch
+
     batch_dict = data.sample_in_batches(batch_size=batch_size)
     state_batch = batch_dict['state_batch'].to(device)
     policy_batch = batch_dict['policy_batch'].to(device)
     reward_batch = batch_dict['reward_batch'].to(device)
 
-    # Forward pass
     policy_out, value_out = network(state_batch)
+    
     loss = combined_loss(
         pi=policy_batch, 
         p_theta_logits=policy_out, 
@@ -50,10 +51,13 @@ def train_on_batch(
         value_weight=value_weight
     )
 
-    # Backward pass
+    if not torch.isfinite(loss):
+        raise ValueError("Loss became NaN or Inf during training")
+
     loss.backward()
     optimizer.step()
-    return True
+
+    return True, loss.item(), len(data)
 
 
 class Checkpoint:

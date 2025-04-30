@@ -1,5 +1,6 @@
 import argparse
 import torch
+import torch.nn.utils as nn_utils
 import torch.multiprocessing as mp
 import time
 import os
@@ -47,7 +48,7 @@ def training_loop(stop_event, transition_queue, network, device, optimizer_param
             s, pi, r = transition_queue.get()
             memory.push(s, pi, r)
 
-        trained = train_on_batch(
+        trained, loss, replay_size = train_on_batch(
             data=memory,
             network=network,
             batch_size=batch_size,
@@ -60,7 +61,7 @@ def training_loop(stop_event, transition_queue, network, device, optimizer_param
             if i == 1:
                 logging.info("Training started!")
             if i % 10 == 0:
-                logging
+                logging.info(f"Batch {i}: loss = {loss.item():.4f}, total replay size: {replay_size}")
                 checkpoint.save_state_dict(iteration=iteration, state_dict=network.state_dict())
                 checkpoint.save_replay_memory(memory=memory, iteration=iteration)
 
@@ -160,6 +161,8 @@ def main(args):
         current_best_network.load_state_dict(pretrained_weights)
         current_best_version = checkpoint.download_from_blob(f'{checkpoint.best_path}/info.json', device=device)['version']
         logger.info(f"Loaded best model version {current_best_version}.")
+    else:
+        current_best_version = 0
 
     checkpoint.load_challenger_weights_if_available(i, challenger_network, fallback_network=current_best_network, logger=logger)
 
@@ -230,6 +233,13 @@ def main(args):
         # === Evaluation ===
         weights = checkpoint.download_from_blob(f"checkpoints/iteration_{i}/weights.pth", device=device)
         challenger_agent.network.load_state_dict(weights)
+
+        # 🚨 Assert that challenger weights changed from current best
+        current_flat = nn_utils.parameters_to_vector(current_best_network.parameters())
+        challenger_flat = nn_utils.parameters_to_vector(challenger_agent.network.parameters())
+        diff_norm = (current_flat - challenger_flat).norm().item()
+        logger.info(f"Challenger vs Current Best weight diff norm = {diff_norm:.6f}")
+        assert diff_norm > 1e-6, f"Challenger network weights did not change after training! (diff_norm={diff_norm:.6f})"
 
         new_best_agent, wins, draws, losses, win_percent, _ = evaluator(
             challenger_agent=challenger_agent,
