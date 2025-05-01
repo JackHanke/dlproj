@@ -30,7 +30,7 @@ def train_on_batch(
     network.to(device)
     network.train()
 
-    if len(data) <= batch_size * 2:
+    if len(data) <= batch_size * 4:
         return False, 0.0, len(data)
 
     optimizer.zero_grad()

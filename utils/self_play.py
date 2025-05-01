@@ -67,7 +67,7 @@ class SelfPlaySession:
                 pi = pi.squeeze()
                 game_states.append(torch.from_numpy(state.copy()))
                 move_policies.append(pi)
-                players.append(torch.tensor([player_to_int[current_player]]))
+                players.append(player_to_int[current_player])
 
                 env.step(selected_move)
             else:
@@ -75,14 +75,14 @@ class SelfPlaySession:
 
             # Push transitions to queue
             for state, policy, player in zip(game_states, move_policies, players):
-                if player.item() == winning_player:
+                if player == winning_player:
                     adjusted_reward = 1
                 elif winning_player == 0:
                     adjusted_reward = 0
-                elif player.item() == -winning_player:
+                elif player == -winning_player:
                     adjusted_reward = -1
                 else:
-                    raise ValueError
+                    raise ValueError("Invalid reward or player")
 
                 transition_queue.put((
                     state.float().permute(2, 0, 1).detach().cpu(),

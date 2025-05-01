@@ -44,9 +44,14 @@ def training_loop(stop_event, transition_queue, network, device, optimizer_param
 
     i = 0
     while not stop_event.is_set() or not transition_queue.empty():
+        dumping = False
         while not transition_queue.empty():
+            dumping = True
             s, pi, r = transition_queue.get()
             memory.push(s, pi, r)
+        if dumping:
+            logging.info(f"Dumped samples into replay memory. Size = {len(memory)}")
+            dumping = False
 
         trained, loss, replay_size = train_on_batch(
             data=memory,
@@ -61,7 +66,7 @@ def training_loop(stop_event, transition_queue, network, device, optimizer_param
             if i == 1:
                 logging.info("Training started!")
             if i % 10 == 0:
-                logging.info(f"Batch {i}: loss = {loss.item():.4f}, total replay size: {replay_size}")
+                logging.info(f"Batch {i}: loss = {loss:.4f}, total replay size: {replay_size}")
                 checkpoint.save_state_dict(iteration=iteration, state_dict=network.state_dict())
                 checkpoint.save_replay_memory(memory=memory, iteration=iteration)
 
@@ -235,8 +240,8 @@ def main(args):
         challenger_agent.network.load_state_dict(weights)
 
         # 🚨 Assert that challenger weights changed from current best
-        current_flat = nn_utils.parameters_to_vector(current_best_network.parameters())
-        challenger_flat = nn_utils.parameters_to_vector(challenger_agent.network.parameters())
+        current_flat = nn_utils.parameters_to_vector(current_best_network.parameters()).to(device)
+        challenger_flat = nn_utils.parameters_to_vector(challenger_agent.network.parameters()).to(device)
         diff_norm = (current_flat - challenger_flat).norm().item()
         logger.info(f"Challenger vs Current Best weight diff norm = {diff_norm:.6f}")
         assert diff_norm > 1e-6, f"Challenger network weights did not change after training! (diff_norm={diff_norm:.6f})"

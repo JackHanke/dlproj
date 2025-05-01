@@ -3,17 +3,8 @@ import torch.nn.functional as F
 
 
 def policy_loss(pi: torch.Tensor, p_theta_logits: torch.Tensor) -> torch.Tensor:
-    """
-    Computes the policy loss using cross-entropy between the MCTS policy (pi) and the neural network policy (p_theta).
-
-    Args:
-        pi (torch.Tensor): Target policy from MCTS (probability distribution over actions).
-        p_theta_logits (torch.Tensor): Predicted policy from the neural network (raw logits).
-
-    Returns:
-        torch.Tensor: Scalar tensor representing the policy loss.
-    """
-    return torch.mean(torch.sum(-pi * F.log_softmax(p_theta_logits, dim=-1)), dim=-1)
+    log_probs = F.log_softmax(p_theta_logits, dim=-1)
+    return (-torch.sum(pi * log_probs, dim=-1)).mean()
 
 
 def value_loss(z: torch.Tensor, v_theta: torch.Tensor) -> torch.Tensor:
