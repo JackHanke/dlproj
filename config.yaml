@@ -16,7 +16,7 @@ training:
   max_moves: 300
 
 network:
-  num_residual_blocks: 13
+  num_residual_blocks: 11
   num_filters: 256
 
 self_play:
