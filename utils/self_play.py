@@ -52,6 +52,7 @@ class SelfPlaySession:
                     latest_state = weight_queue.get()
                     network.load_state_dict(latest_state)
                     network.to(device)
+                    logger.info("Updated self play network weights.")
 
             game_states = []
             move_policies = []
