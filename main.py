@@ -54,6 +54,7 @@ def training_loop(stop_event, transition_queue, weight_queue, network, device, o
             memory.push(s, pi, r)
         if dumping:
             logging.info(f"Dumped samples into replay memory. Size = {len(memory)}")
+            checkpoint.save_replay_memory(memory=memory, iteration=iteration)
             dumping = False
 
         trained, loss, replay_size = train_on_batch(
@@ -73,7 +74,6 @@ def training_loop(stop_event, transition_queue, weight_queue, network, device, o
             if i % 10 == 0:
                 logging.info(f"Batch {i}: loss = {loss:.4f}, total replay size: {replay_size}")
                 checkpoint.save_state_dict(iteration=iteration, state_dict=network.state_dict())
-                checkpoint.save_replay_memory(memory=memory, iteration=iteration)
 
     # 🔥 Save memory after training ends
     checkpoint.save_replay_memory(memory=memory, iteration=iteration)

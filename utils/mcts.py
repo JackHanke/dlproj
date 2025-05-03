@@ -101,6 +101,7 @@ def create_pi_vector(node: Node, tau: float):
 
     if total_visits == 0:
         pi[0] = 1.0  # fallback
+        print("FALLBACK OCCURED IN MCTS!!!")
         return torch.tensor(pi)
 
     if tau == 0:
