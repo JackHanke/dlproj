@@ -106,6 +106,9 @@ def create_pi_vector(node: Node, tau: float):
     # If tau == 0, use the visit-count distribution rather than one-hot
     if tau == 0:
         total_visits = sum(child.n for child in node.children.values())
+        if total_visits == 0:
+            pi[0] = 1.0  # fallback to avoid all-zero pi; index 0 is arbitrary but consistent
+            return torch.tensor(pi)
         if total_visits > 0:
             for move, child in node.children.items():
                 mirrored = mirror_move(move) if node.state.turn == chess.BLACK else move
@@ -226,7 +229,11 @@ def expand_nodes(leaf_nodes, net, device):
                 # Mirror move for black to get correct action index
                 mirrored = mirror_move(move) if node.state.turn == chess.BLACK else move
                 action_idx = moves_to_actions[mirrored.uci()]
-                p_val = float(p_vals[idx_map[action_idx]])
+                try:
+                    p_val = float(p_vals[idx_map[action_idx]])
+                except KeyError:
+                    # highly unlikely; keep the branch alive
+                    p_val = 1e-8
 
                 next_state = deepcopy(node.state)
                 next_state.push(move)
@@ -243,9 +250,12 @@ def expand_nodes(leaf_nodes, net, device):
                     prior=p_val
                 )
                 node.children[move] = new_node
+            if node.parent is None:  # node is root
+                add_dirichlet_noise_to_root(node)
 
         # 2d) Backup the values
         val = value_batch[b_idx].item()
+        assert -1.0 <= val <= 1.0
         backup(node, val)
 
 # --------------------------------------------------------------------------
@@ -303,22 +313,20 @@ def mcts(
         # 3c) Run expansion if batch full or done simulating
         if len(leaf_nodes) >= batch_size or simulations_done == sims:
             expand_nodes(leaf_nodes, net, device)
-
-            # Add Dirichlet noise to root node after first expansion
-            if not root_expanded:
-                add_dirichlet_noise_to_root(root)
-                root_expanded = True
-
             leaf_nodes = []
 
-    # After all sims, construct final policy and value
+    # ------------------------------------------------------------------
+    # Construct training target π and choose the move to play.
+    # Deterministic when either `inference_mode` is on **or** τ == 0;
+    # otherwise sample from the visit‑count distribution.
     pi = create_pi_vector(root, tau)
     value = root.q
 
-    if inference_mode:
+    deterministic = inference_mode or tau == 0.0
+    if deterministic:
         sampled_action = int(pi.argmax().item())
     else:
-        m = Categorical(pi)
-        sampled_action = int(m.sample().item())
+        sampled_action = int(Categorical(pi).sample().item())
+    # ------------------------------------------------------------------
 
     return pi, value, sampled_action, root
