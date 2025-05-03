@@ -29,7 +29,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def training_loop(stop_event, transition_queue, network, device, optimizer_params, batch_size, counter, checkpoint, iteration, max_replay_memory_size):
+def training_loop(stop_event, transition_queue, weight_queue, network, device, optimizer_params, batch_size, counter, checkpoint, iteration, max_replay_memory_size):
     logging.basicConfig(filename='dem0.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
     optimizer = get_optimizer(
@@ -41,6 +41,9 @@ def training_loop(stop_event, transition_queue, network, device, optimizer_param
     )
 
     memory = ReplayMemory(max_replay_memory_size)
+    # push initial weights
+    weight_queue.put(network.state_dict())
+    broadcast_interval = 50
 
     i = 0
     while not stop_event.is_set() or not transition_queue.empty():
@@ -65,6 +68,8 @@ def training_loop(stop_event, transition_queue, network, device, optimizer_param
             i += 1
             if i == 1:
                 logging.info("Training started!")
+            if i % broadcast_interval == 0:
+                weight_queue.put(network.state_dict())
             if i % 10 == 0:
                 logging.info(f"Batch {i}: loss = {loss:.4f}, total replay size: {replay_size}")
                 checkpoint.save_state_dict(iteration=iteration, state_dict=network.state_dict())
@@ -73,6 +78,8 @@ def training_loop(stop_event, transition_queue, network, device, optimizer_param
     # 🔥 Save memory after training ends
     checkpoint.save_replay_memory(memory=memory, iteration=iteration)
     logging.info(f"✅ Saved ReplayMemory after training for iteration {iteration}.")
+
+    weight_queue.put(network.state_dict())
 
     counter.value = i
     logging.info(f"Training finished after {i} batches.")
@@ -143,6 +150,7 @@ def main(args):
     logger.info(f"Device: {device}")
 
     transition_queue = mp.Queue()
+    weight_queue = mp.Queue()
 
     # === If memory exists, prefill the queue ===
     if not args.start_with_empty_replay_memory:
@@ -207,6 +215,7 @@ def main(args):
             target=training_loop,
             args=(stop_event,
                   transition_queue,
+                  weight_queue,
                   challenger_network,
                   device,
                   optimizer_params,
@@ -221,7 +230,8 @@ def main(args):
         self_play_session.run_self_play(
             iteration=i,
             transition_queue=transition_queue,
-            network=current_best_network,
+            weight_queue=weight_queue,
+            network=challenger_network,
             device=device,
             n_sims=configs.self_play.num_simulations,
             num_games=configs.training.num_self_play_games,

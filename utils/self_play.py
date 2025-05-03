@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.multiprocessing as mp
 import logging
 import time
 from copy import deepcopy
@@ -23,6 +24,7 @@ class SelfPlaySession:
         self,
         iteration: int,
         transition_queue: torch.multiprocessing.Queue,
+        weight_queue: mp.Queue,
         network: nn.Module,
         device: torch.device,
         n_sims: int,
@@ -33,9 +35,24 @@ class SelfPlaySession:
         env = chess_v6.env(render_mode=None)
         player_to_int = {"player_0": 1, "player_1": -1}
 
+        # Load the most recent weights before starting games
+        if weight_queue is not None:
+            while not weight_queue.empty():
+                latest_state = weight_queue.get()
+                network.load_state_dict(latest_state)
+                network.to(device)
+
         for game_idx in range(1 + start_from_game_idx, num_games + 1):
             logger.debug(f'Starting game #{game_idx}')
             env.reset()
+
+            # Load the most recent weights before starting this game
+            if weight_queue is not None:
+                while not weight_queue.empty():
+                    latest_state = weight_queue.get()
+                    network.load_state_dict(latest_state)
+                    network.to(device)
+
             game_states = []
             move_policies = []
             players = []
@@ -55,6 +72,12 @@ class SelfPlaySession:
 
                 state = observation['observation']
                 tau = 1.0 if move_idx < self.temperature_initial_moves else 0
+
+                # Non‑blocking weight refresh
+                if weight_queue is not None and not weight_queue.empty():
+                    latest_state = weight_queue.get()
+                    network.load_state_dict(latest_state)
+                    network.to(device)
 
                 pi, _, selected_move, _ = mcts(
                     state=deepcopy(env.board),

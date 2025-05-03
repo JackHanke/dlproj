@@ -57,7 +57,7 @@ class Node:
         self.p = prior   # prior from network
 
 
-def add_dirichlet_noise_to_root(root: Node, alpha=0.03, epsilon=0.25):
+def add_dirichlet_noise_to_root(root: Node, alpha=0.3, epsilon=0.25):
     legal_moves = list(root.children.keys())
     if not legal_moves:
         return
@@ -103,18 +103,14 @@ def create_pi_vector(node: Node, tau: float):
     # Example uses 4672 as the total number of possible moves
     pi = [0.0] * 4672
 
-    # If tau == 0, pick the move with highest visit count deterministically
+    # If tau == 0, use the visit-count distribution rather than one-hot
     if tau == 0:
-        most_visits = max(node.children.values(), key=lambda c: c.n) if node.children else None
-        if most_visits is not None:
-            # Find which action index corresponds to the best child
+        total_visits = sum(child.n for child in node.children.values())
+        if total_visits > 0:
             for move, child in node.children.items():
-                if child is most_visits:
-                    # If it's black's turn, mirror the move
-                    mirrored = mirror_move(move) if node.state.turn == chess.BLACK else move
-                    action_idx = moves_to_actions[mirrored.uci()]
-                    pi[action_idx] = 1.0
-                    break
+                mirrored = mirror_move(move) if node.state.turn == chess.BLACK else move
+                action_idx = moves_to_actions[mirrored.uci()]
+                pi[action_idx] = child.n / total_visits
         return torch.tensor(pi)
 
     # If tau > 0, use a softmax-style distribution over n^(1/tau)
@@ -221,10 +217,19 @@ def expand_nodes(leaf_nodes, net, device):
 
         # 2c) Expand children
         if len(node.children) == 0:
-            for move, p_val in zip(node.state.legal_moves, p_vec.cpu()):
+            # Build mapping from action index to p_vec position
+            legal_indices = torch.nonzero(action_mask).squeeze(-1).cpu().numpy()
+            p_vals = p_vec.cpu().numpy()
+            idx_map = {action: idx for idx, action in enumerate(legal_indices)}
+
+            for move in node.state.legal_moves:
+                # Mirror move for black to get correct action index
+                mirrored = mirror_move(move) if node.state.turn == chess.BLACK else move
+                action_idx = moves_to_actions[mirrored.uci()]
+                p_val = float(p_vals[idx_map[action_idx]])
+
                 next_state = deepcopy(node.state)
                 next_state.push(move)
-                # Example: shift board_history or however you handle it
                 board_history = np.dstack((
                     get_observation(next_state, player=0)[:, :, 7:],
                     node.board_history[:, :, :-13]
@@ -235,7 +240,7 @@ def expand_nodes(leaf_nodes, net, device):
                     board_history=board_history,
                     agent=new_agent,
                     parent=node,
-                    prior=p_val.item()
+                    prior=p_val
                 )
                 node.children[move] = new_node
 
