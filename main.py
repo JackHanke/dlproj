@@ -48,10 +48,14 @@ def training_loop(stop_event, transition_queue, weight_queue, network, device, o
     i = 0
     while not stop_event.is_set() or not transition_queue.empty():
         dumping = False
-        while not transition_queue.empty():
-            dumping = True
-            s, pi, r = transition_queue.get()
-            memory.push(s, pi, r)
+        try:
+            while not transition_queue.empty():
+                s, pi, r = transition_queue.get_nowait()
+                dumping = True
+                memory.push(s, pi, r)
+        except Exception as e:
+            logging.error(str(e))
+            pass
         if dumping:
             logging.info(f"Dumped samples into replay memory. Size = {len(memory)}")
             checkpoint.save_replay_memory(memory=memory, iteration=iteration)
@@ -211,39 +215,40 @@ def main(args):
 
         stop_event = mp.Event()
         counter = mp.Value("i", 0)
-        training_process = mp.Process(
-            target=training_loop,
-            args=(stop_event,
-                  transition_queue,
-                  weight_queue,
-                  challenger_network,
-                  device,
-                  optimizer_params,
-                  configs.training.batch_size,
-                  counter,
-                  checkpoint,
-                  i,
-                  MAX_REPLAY_MEMORY_SIZE)
-        )
-        training_process.start()
+        if self_play_start_from < configs.training.num_self_play_games:
+            training_process = mp.Process(
+                target=training_loop,
+                args=(stop_event,
+                    transition_queue,
+                    weight_queue,
+                    challenger_network,
+                    device,
+                    optimizer_params,
+                    configs.training.batch_size,
+                    counter,
+                    checkpoint,
+                    i,
+                    MAX_REPLAY_MEMORY_SIZE)
+            )
+            training_process.start()
 
-        self_play_session.run_self_play(
-            iteration=i,
-            transition_queue=transition_queue,
-            weight_queue=weight_queue,
-            network=challenger_network,
-            device=device,
-            n_sims=configs.self_play.num_simulations,
-            num_games=configs.training.num_self_play_games,
-            max_moves=configs.training.max_moves,
-            start_from_game_idx=self_play_start_from
-        )
+            self_play_session.run_self_play(
+                iteration=i,
+                transition_queue=transition_queue,
+                weight_queue=weight_queue,
+                network=challenger_network,
+                device=device,
+                n_sims=configs.self_play.num_simulations,
+                num_games=configs.training.num_self_play_games,
+                max_moves=configs.training.max_moves,
+                start_from_game_idx=self_play_start_from
+            )
+
+            stop_event.set()
+            training_process.join()
+            logger.info(f"Training batches completed: {counter.value}")
 
         self_play_start_from = 0
-
-        stop_event.set()
-        training_process.join()
-        logger.info(f"Training batches completed: {counter.value}")
 
         # === Evaluation ===
         weights = checkpoint.download_from_blob(f"checkpoints/iteration_{i}/weights.pth", device=device)

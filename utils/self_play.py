@@ -79,6 +79,7 @@ class SelfPlaySession:
                     latest_state = weight_queue.get()
                     network.load_state_dict(latest_state)
                     network.to(device)
+                    logger.info("Updated self play net weights.")
 
                 pi, _, selected_move, _ = mcts(
                     state=deepcopy(env.board),
