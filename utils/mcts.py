@@ -96,27 +96,21 @@ def is_game_over(board: chess.Board) -> bool:
 
 
 def create_pi_vector(node: Node, tau: float):
-    """
-    Create the final policy distribution (pi) from the node visit counts.
-    For chess, you might have an action space of size 4672 (or whatever).
-    """
-    # Example uses 4672 as the total number of possible moves
     pi = [0.0] * 4672
+    total_visits = sum(child.n for child in node.children.values())
 
-    # If tau == 0, use the visit-count distribution rather than one-hot
-    if tau == 0:
-        total_visits = sum(child.n for child in node.children.values())
-        if total_visits == 0:
-            pi[0] = 1.0  # fallback to avoid all-zero pi; index 0 is arbitrary but consistent
-            return torch.tensor(pi)
-        if total_visits > 0:
-            for move, child in node.children.items():
-                mirrored = mirror_move(move) if node.state.turn == chess.BLACK else move
-                action_idx = moves_to_actions[mirrored.uci()]
-                pi[action_idx] = child.n / total_visits
+    if total_visits == 0:
+        pi[0] = 1.0  # fallback
         return torch.tensor(pi)
 
-    # If tau > 0, use a softmax-style distribution over n^(1/tau)
+    if tau == 0:
+        for move, child in node.children.items():
+            mirrored = mirror_move(move) if node.state.turn == chess.BLACK else move
+            action_idx = moves_to_actions[mirrored.uci()]
+            pi[action_idx] = child.n / total_visits
+        return torch.tensor(pi)
+
+    # tau > 0: softmax over visit counts
     sum_n_tau = sum([child.n ** (1.0 / tau) for child in node.children.values()])
     for move, child in node.children.items():
         mirrored = mirror_move(move) if node.state.turn == chess.BLACK else move
@@ -124,7 +118,6 @@ def create_pi_vector(node: Node, tau: float):
         pi[action_idx] = (child.n ** (1.0 / tau)) / (sum_n_tau + 1e-8)
 
     return torch.tensor(pi)
-
 # --------------------------------------------------------------------------
 # 1) Selection: find a leaf node by following UCB/PUCT from the root
 def select_leaf_node(root: Node, c_puct: float = 2.5) -> Node:

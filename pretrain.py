@@ -185,7 +185,7 @@ def evaluate():
     client = Checkpoint(verbose=True, compute_elo=False)
     state_dict = client.download_from_blob("checkpoints/pretrained_weights.pth", device=device)
 
-    pretrained_net = DemoNet(num_res_blocks=13)
+    pretrained_net = DemoNet(num_res_blocks=10)
     pretrained_net.to(device)
     pretrained_net.load_state_dict(state_dict=state_dict)
     # get dataloaders for each split

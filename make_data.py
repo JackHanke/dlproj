@@ -67,16 +67,11 @@ def stockfish_starter(
             observation, reward, termination, truncation, info = env.last()
             datapoints += 1
             # Check for game termination
-            if termination:
+            if termination or truncation:
                 # env.rewards[current_player] is 1 if the current player just won, -1 if lost, 0 if draw
                 game_result = reward
                 last_player = player_to_int[current_player]
                 winning_player = game_result * last_player
-                break
-
-            if truncation:
-                winning_player = 0
-                last_player = player_to_int[current_player]
                 break
 
             # state = observation['observation']
@@ -144,7 +139,7 @@ def stockfish_starter(
             print(f'Done writing out!')
 
 if __name__ == '__main__':
-    stockfish_level = 0
+    stockfish_level = 20
     stockfish_0 = Stockfish(level=stockfish_level, move_time=0.1)
     stockfish_1 = Stockfish(level=stockfish_level, move_time=0.1)
 
