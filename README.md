@@ -4,28 +4,13 @@
 *dem0* is a chess engine trained *tabula rasa* using the  [AlphaGo Zero](https://www.nature.com/articles/nature24270) self-play pipeline. dem0 trains on the [PettingZoo chess environment](https://pettingzoo.farama.org/environments/classic/chess/). dem0 is evaluated using [ELO rating](https://en.wikipedia.org/wiki/Elo_rating_system) computed by the  [BayesELO](https://www.remi-coulom.fr/Bayesian-Elo/) software. 
 
 ## Project TODOs
-- Pipeline
-    1. Self-play
-        - ?
-    2. Internal Evaluator
-        - Something is fishy with number of games played
-    3. External Evaluator
-        - Something is fishy with number of games played
-        - Find out information on Stockfish ELO
-    4. Optimizer
-        - Ensure three copies of the network all remain on GPU and aren't getting passed back and forth
-        - 
-    5. MCTS
-        - Multiprocess everything
-            - Concurrent mcts for 100 sims 21 seconds (with `num_res_blocks=1` from starting position)
-            - With 8 processes 
-    - Write everything so it is configurable through `config.yaml` 
-    - 
-- Presentation
-    - Update final presentation
-- For Fun
-    - Make animated gif of dem0 moving its head
-
+- Rewrite everything in C++ or Rust
+- Change MCTS to MiniMax
+- Change approximator to deep differentiable logic gate network. 
+- Use bitboards, combine with above for ~speed~
+- read more of the [Chess Programming Wiki](https://www.chessprogramming.org/Main_Page)
+- make proper ui
+- get real ELO for bot
 
 ## Network Architecture
 
